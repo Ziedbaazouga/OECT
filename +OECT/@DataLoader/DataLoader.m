@@ -26,7 +26,6 @@ classdef DataLoader < handle
         end
         
         function loadSteadyState(obj, filename)
-            % Load steady-state measurement file
             obj.log.info('Loading steady-state: %s', filename);
             
             if ~isfile(filename)
@@ -34,24 +33,19 @@ classdef DataLoader < handle
                 error('File not found: %s', filename);
             end
             
-            % Get sheet names
             sheets = sheetnames(filename);
             obj.log.debug('Found %d sheets', length(sheets));
             
-            % Load all sheets
             allData = struct();
             for s = 1:length(sheets)
                 tbl = readtable(filename, 'Sheet', sheets{s});
-                allData.(sheets{s}) = table2array(tbl);
-                obj.log.debug('Sheet %s: %d x %d', sheets{s}, size(allData.(sheets{s}), 1), size(allData.(sheets{s}), 2));
+                allData.(matlab.lang.makeValidName(sheets{s})) = table2array(tbl);
+                obj.log.debug('Sheet %s: %d x %d', sheets{s}, size(allData.(matlab.lang.makeValidName(sheets{s})), 1), size(allData.(matlab.lang.makeValidName(sheets{s})), 2));
             end
             
-            % Store raw data
             obj.steadyState.filename = filename;
             obj.steadyState.sheets = sheets;
             obj.steadyState.raw = allData;
-            
-            % Parse data structure
             obj.steadyState.parsed = obj.parseSteadyStateData(allData, sheets);
             
             obj.isLoaded = true;
@@ -59,9 +53,8 @@ classdef DataLoader < handle
         end
         
         function loadTransient(obj, filenames)
-            % Load transient measurement files
-            if ischar(filenames)
-                filenames = {filenames};
+            if ischar(filenames) || isstring(filenames)
+                filenames = cellstr(filenames);
             end
             
             obj.log.info('Loading %d transient files', length(filenames));
@@ -94,61 +87,58 @@ classdef DataLoader < handle
             obj.log.info('Transient data loaded successfully');
         end
         
-        function parsed = parseSteadyStateData(obj, allData, sheets)
-            % Parse steady-state data structure
-            % Assumes standard format: 17 Vg rows, 9 Vd columns
-            
-            nSheets = length(sheets);
-            nVg = 17;
-            nVd = 9;
-            
-            gateVoltage = zeros(nVg, 1, nSheets);
-            drainVoltage = zeros(1, nVd, nSheets);
-            drainCurrent = zeros(nVg, nVd, nSheets);
-            
-            for s = 1:nSheets
-                data = allData.(sheets{s});
-                
-                % Column 4 is gate voltage
-                gateVoltage(:,1,s) = data(1:nVg, 4);
-                
-                % Drain voltages at row 1, columns 2, 7, 12, ...
-                for v = 1:nVd
-                    drainVoltage(1, v, s) = data(1, 2 + 5*(v-1));
-                    drainCurrent(:, v, s) = data(1:nVg, 1 + 5*(v-1));
-                end
-            end
-            
-            parsed.gateVoltage = mean(gateVoltage, 3);
-            parsed.drainVoltage = mean(drainVoltage, 3);
-            parsed.drainCurrent = mean(drainCurrent, 3);
-            parsed.nSheets = nSheets;
-            parsed.Vg_unique = unique(parsed.gateVoltage);
-            parsed.Vd_unique = unique(parsed.drainVoltage);
-            
-            % Sort by voltage
-            [parsed.Vg_sorted, idxVg] = sort(parsed.Vg_unique);
-            [parsed.Vd_sorted, idxVd] = sort(parsed.Vd_unique);
-            
-            % Reorder current matrix
-            Vg_idx = arrayfun(@(v) find(parsed.Vg_unique == v, 1), parsed.gateVoltage);
-            Vd_idx = arrayfun(@(v) find(parsed.Vd_unique == v, 1), parsed.drainVoltage);
-            
-            parsed.Id_matrix = zeros(length(parsed.Vg_sorted), length(parsed.Vd_sorted));
-            for i = 1:length(parsed.Vg_sorted)
-                for j = 1:length(parsed.Vd_sorted)
-                    mask = Vg_idx == i & Vd_idx == j;
-                    if any(mask)
-                        parsed.Id_matrix(i, j) = mean(parsed.drainCurrent(mask));
-                    end
-                end
-            end
+       function parsed = parseSteadyStateData(obj, allData, sheets)
+    %#ok<INUSD> obj
+    nVg = 17;
+    nVd = 9;
+    
+    validSheets = {};
+    stackGate = [];
+    stackVd = [];
+    stackId = [];
+    
+    for s = 1:length(sheets)
+        fn = matlab.lang.makeValidName(sheets{s});
+        data = allData.(fn);
+        
+        minCols = 1 + 5*(nVd-1) + 1; % max needed column index
+        if size(data,1) < nVg || size(data,2) < minCols
+            continue; % skip Calc/summary sheets
         end
         
+        gate = data(1:nVg, 4);
+        vd = zeros(nVd,1);
+        id = zeros(nVg,nVd);
+        
+        for v = 1:nVd
+            colV = 2 + 5*(v-1);
+            colI = 1 + 5*(v-1);
+            vd(v) = data(1, colV);
+            id(:,v) = data(1:nVg, colI);
+        end
+        
+        stackGate(:,end+1) = gate; %#ok<AGROW>
+        stackVd(:,end+1) = vd; %#ok<AGROW>
+        stackId(:,:,end+1) = id; %#ok<AGROW>
+        validSheets{end+1} = sheets{s}; %#ok<AGROW>
+    end
+    
+    if isempty(validSheets)
+        error('No valid steady-state sheets found (expected >=17 rows and required columns)');
+    end
+    
+    parsed.gateVoltage = mean(stackGate, 2);
+    parsed.drainVoltage = mean(stackVd, 2)';
+    parsed.drainCurrent = mean(stackId, 3);
+    parsed.nSheets = numel(validSheets);
+    parsed.sheetsUsed = validSheets;
+    
+    [parsed.Vg_sorted, idxVg] = sort(parsed.gateVoltage(:), 'ascend');
+    [parsed.Vd_sorted, idxVd] = sort(parsed.drainVoltage(:), 'ascend');
+    parsed.Id_matrix = parsed.drainCurrent(idxVg, idxVd);
+end
+        
         function parsed = parseTransientData(obj, data, sheets, filename)
-            % Parse transient data structure
-            % Assumes standard format: time, drain voltage, drain current, gate voltage
-            
             parsed = struct();
             parsed.time = [];
             parsed.drainCurrent = [];
@@ -156,18 +146,15 @@ classdef DataLoader < handle
             parsed.gateVoltage = [];
             parsed.sheets = {};
             
-            % Extract Vgs and Vds from filename
             parsed = obj.parseFilename(filename, parsed);
             
+            startRow = obj.config.defaultStartRow;
+            endRow = obj.config.defaultEndRow;
+            
             for s = 1:length(sheets)
-                sheet = sheets{s};
                 d = data{s};
                 
-                % Row 68-2030 contains the transient data (from your file)
-                startRow = 68;
-                endRow = 2030;
-                
-                if size(d, 1) >= endRow
+                if size(d, 1) >= endRow && size(d,2) >= 5
                     t = d(startRow:endRow, 1) - d(startRow, 1);
                     Id = d(startRow:endRow, 3);
                     Vd = d(startRow:endRow, 2);
@@ -177,30 +164,25 @@ classdef DataLoader < handle
                     parsed.drainCurrent = [parsed.drainCurrent; Id(:)];
                     parsed.drainVoltage = [parsed.drainVoltage; Vd(:)];
                     parsed.gateVoltage = [parsed.gateVoltage; Vg(:)];
-                    parsed.sheets{end+1} = sheet;
+                    parsed.sheets{end+1} = sheets{s};
                 end
             end
             
-            % Remove invalid values
-            valid = isfinite(parsed.drainCurrent) & parsed.time > 0;
+            valid = isfinite(parsed.time) & isfinite(parsed.drainCurrent) & parsed.time > 0;
             parsed.time = parsed.time(valid);
             parsed.drainCurrent = parsed.drainCurrent(valid);
             parsed.drainVoltage = parsed.drainVoltage(valid);
             parsed.gateVoltage = parsed.gateVoltage(valid);
             
-            % Determine Vgs and Vds from data
             parsed.Vgs = unique(parsed.gateVoltage);
             parsed.Vds = unique(parsed.drainVoltage);
         end
         
         function parsed = parseFilename(obj, filename, parsed)
-            % Parse Vgs and Vds from filename
-            % Format: "-04 vd -02 vg.xls"
-            
+            %#ok<INUSD> obj
             [~, name, ~] = fileparts(filename);
             
-            % Look for patterns
-            tokens = regexp(name, '([+-]?\d+\.?\d*)\s*vd\s*([+-]?\d+\.?\d*)\s*vg', 'tokens');
+            tokens = regexp(lower(name), '([+-]?\d+\.?\d*)\s*vd\s*([+-]?\d+\.?\d*)\s*vg', 'tokens');
             if ~isempty(tokens)
                 parsed.filename_Vds = str2double(tokens{1}{1});
                 parsed.filename_Vgs = str2double(tokens{1}{2});
@@ -211,8 +193,8 @@ classdef DataLoader < handle
         end
         
         function setupDefaults(obj)
-            obj.config.defaultStartRow = 68;
-            obj.config.defaultEndRow = 2030;
+            if ~isfield(obj.config,'defaultStartRow'), obj.config.defaultStartRow = 68; end
+            if ~isfield(obj.config,'defaultEndRow'), obj.config.defaultEndRow = 2030; end
         end
         
         function clearData(obj)

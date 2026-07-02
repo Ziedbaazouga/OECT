@@ -49,32 +49,49 @@ classdef Logger < handle
         end
         
         function log(obj, level, message, varargin)
-    if obj.LEVELS.(level) > obj.LEVELS.(obj.Level)
-        return;
-    end
-    
-    timestamp = datestr(now, 'yyyy-mm-dd HH:MM:SS');
-    msg = sprintf(message, varargin{:});
-    
-    if ~isempty(obj.context)
-        entry = sprintf('[%s] [%s] [%s] %s\n', timestamp, level, obj.context, msg);
-    else
-        entry = sprintf('[%s] [%s] %s\n', timestamp, level, msg);
-    end
-    
-    if obj.ConsoleOutput
-        if strcmp(level, 'ERROR')
-            fprintf(2, entry);
-        else
-            fprintf(entry);
+            if obj.LEVELS.(level) > obj.LEVELS.(obj.Level)
+                return;
+            end
+            
+            timestamp = datestr(now, 'yyyy-mm-dd HH:MM:SS');
+
+            % Robust formatting:
+            % - if formatting fails (e.g., bad % placeholders), fallback safely
+            try
+                if isempty(varargin)
+                    msg = char(message);
+                else
+                    msg = sprintf(message, varargin{:});
+                end
+            catch
+                msg = char(message);
+                if ~isempty(varargin)
+                    try
+                        extra = cellfun(@(x) string(x), varargin, 'UniformOutput', false);
+                        msg = [msg, ' | args: ', strjoin(extra, ', ')];
+                    catch
+                    end
+                end
+            end
+            
+            if ~isempty(obj.context)
+                entry = sprintf('[%s] [%s] [%s] %s', timestamp, level, obj.context, msg);
+            else
+                entry = sprintf('[%s] [%s] %s', timestamp, level, msg);
+            end
+            
+            if obj.ConsoleOutput
+                if strcmp(level, 'ERROR')
+                    fprintf(2, '%s\n', entry);   % SAFE: no format interpretation
+                else
+                    fprintf('%s\n', entry);      % SAFE: no format interpretation
+                end
+            end
+            
+            if obj.fileId ~= -1
+                fprintf(obj.fileId, '%s\n', entry); % SAFE
+            end
         end
-    end
-    
-    if obj.fileId ~= -1
-        fprintf(obj.fileId, entry);
-        % fflush removed - not needed in MATLAB
-    end
-end
         
         function error(obj, message, varargin)
             obj.log('ERROR', message, varargin{:});

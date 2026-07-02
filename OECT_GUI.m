@@ -461,67 +461,89 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.logger.info('Error state reset');
         end
 
-        function loadData(app)
-            app.logger.info('Loading data...');
-            app.DataStatusLabel.Text = 'Loading...';
-            drawnow;
-            
-            try
-                steadyFile = app.SteadyStateEdit.Value;
-                transientFiles = app.TransientEdit.Value;
-                
-                if isempty(steadyFile) || ~isfile(steadyFile)
-                    error('Please select a valid steady-state file');
-                end
-                if isempty(transientFiles)
-                    error('Please select transient files');
-                end
-                
-                if contains(transientFiles, ';')
-                    files = strsplit(transientFiles, ';');
-                    files = strtrim(files);
-                else
-                    files = {transientFiles};
-                end
-                
-                if isstruct(app.dataLoader)
-                    sheets = {'Sheet1'};
-                else
-                    try
-                        app.dataLoader.loadSteadyState(steadyFile);
-                        app.dataLoader.loadTransient(files);
-                        sheets = app.dataLoader.steadyState.sheets;
-                    catch ME
-                        app.logger.warn('Data parsing issue, falling back to default sheet list: %s', ME.message);
-                        sheets = {'Sheet1'};
-                    end
-                end
-                
-                app.SheetDropdown.Items = sheets;
-                if ~isempty(sheets), app.SheetDropdown.Value = sheets{1}; end
-                
-                app.isLoaded = true;
-                app.onDataLoaded();
-
-if ~isstruct(app.stateManager)
-    try, app.stateManager.transition('DataLoaded'); catch, end
-end
-app.updateUIState();
-app.logger.info('Data loaded successfully');
-drawnow;  % Force GUI to update
-                
-            catch ME
-                app.logger.error('Data loading failed: %s', ME.message);
-                app.DataStatusLabel.Text = sprintf('ERROR: %s', ME.message);
-                if ~isstruct(app.stateManager)
-                    try, app.stateManager.transition('Error'); catch, app.onErrorReset(); end
-                else
-                    app.onErrorReset();
-                end
-                app.updateUIState();
-                 drawnow;
-            end
+       function loadData(app)
+    app.logger.info('Loading data...');
+    app.DataStatusLabel.Text = 'Loading...';
+    drawnow;
+    
+    try
+        steadyFile = app.SteadyStateEdit.Value;
+        transientFiles = app.TransientEdit.Value;
+        
+        if isempty(steadyFile) || ~isfile(steadyFile)
+            error('Please select a valid steady-state file');
         end
+        if isempty(transientFiles)
+            error('Please select transient files');
+        end
+        
+        if contains(transientFiles, ';')
+            files = strsplit(transientFiles, ';');
+            files = strtrim(files);
+            files = files(~cellfun(@isempty, files));
+        else
+            files = {strtrim(transientFiles)};
+        end
+        
+        if isstruct(app.dataLoader)
+            error('DataLoader unavailable');
+        end
+        
+        steadyOK = false;
+        transOK = false;
+        sheets = {'Sheet1'};
+        
+        % --- load steady-state (non-fatal if it fails) ---
+        try
+            app.dataLoader.loadSteadyState(steadyFile);
+            if isfield(app.dataLoader.steadyState, 'sheets') && ~isempty(app.dataLoader.steadyState.sheets)
+                sheets = app.dataLoader.steadyState.sheets;
+            end
+            steadyOK = true;
+        catch MEss
+            app.logger.warn('Steady-state load failed: %s', MEss.message);
+        end
+        
+        % --- ALWAYS try transient load ---
+        try
+            app.dataLoader.loadTransient(files);
+            if isfield(app.dataLoader.transient, 'parsed') && ~isempty(app.dataLoader.transient.parsed)
+                transOK = true;
+            end
+        catch MEtr
+            app.logger.warn('Transient load failed: %s', MEtr.message);
+        end
+        
+        app.SheetDropdown.Items = sheets;
+        if ~isempty(sheets), app.SheetDropdown.Value = sheets{1}; end
+        
+        if transOK
+            app.isLoaded = true;
+            app.onDataLoaded();
+            if ~isstruct(app.stateManager)
+                try, app.stateManager.transition('DataLoaded'); catch, end
+            end
+            app.updateUIState();
+            app.logger.info('Data loaded successfully (steady=%d, transient=%d)', steadyOK, transOK);
+        else
+            error('Transient data failed to load. Check transient files/sheets format.');
+        end
+        
+        drawnow;
+        
+    catch ME
+        app.logger.error('Data loading failed: %s', ME.message);
+        app.DataStatusLabel.Text = sprintf('ERROR: %s', ME.message);
+        app.isLoaded = false;
+        if ~isstruct(app.stateManager)
+            try, app.stateManager.transition('Error'); catch, app.onErrorReset(); end
+        else
+            app.onErrorReset();
+        end
+        app.updateUIState();
+        drawnow;
+    end
+end
 
         function browseSteadyStateFile(app)
             [file, path] = uigetfile({'*.xlsx;*.csv;*.mat', 'Supported Files'}, 'Select Steady-State Data File');
@@ -538,33 +560,26 @@ drawnow;  % Force GUI to update
             end
         end
 
-        function fitParameters(app)
-            if app.isFitting, return; end
-            
-            app.isFitting = true;
-            app.FitBtn.Enable = 'off';
-            app.CancelFitBtn.Enable = 'on';
-            app.FitStatusLabel.Text = 'Fitting in progress...';
-            app.FitProgress.Text = '0%';
-            drawnow;
-            
-            try
-    % Verify data is loaded
-    if isstruct(app.dataLoader)
-        error('No data has been loaded. Please load data before fitting.');
-    end
-    if isempty(app.dataLoader.transient.parsed) || isempty(app.dataLoader.transient.filenames)
-        error('No data has been loaded. Please load data before fitting.');
-    end
+       function fitParameters(app)
+    if app.isFitting, return; end
+    app.isFitting = true;
+    app.FitBtn.Enable = 'off';
+    app.CancelFitBtn.Enable = 'on';
+    app.FitStatusLabel.Text = 'Fitting in progress...';
+    app.FitProgress.Text = '0%';
+    drawnow;
     
-    modelType = app.getModelType();
-    geometry.d = app.dEdit.Value;
-    geometry.L = app.LEdit.Value;
-    geometry.W = app.WEdit.Value;
-    geometry.T = app.TEdit.Value;
-    
-    % Create model
     try
+        if isstruct(app.dataLoader) || ~isfield(app.dataLoader.transient,'parsed') || isempty(app.dataLoader.transient.parsed)
+            error('No transient data loaded. Please load data before fitting.');
+        end
+        
+        modelType = app.getModelType();
+        geometry.d = app.dEdit.Value;
+        geometry.L = app.LEdit.Value;
+        geometry.W = app.WEdit.Value;
+        geometry.T = app.TEdit.Value;
+        
         switch modelType
             case 'Bisquert'
                 app.model = OECT.BisquertModel();
@@ -573,51 +588,51 @@ drawnow;  % Force GUI to update
             otherwise
                 app.model = OECT.BisquertModel();
         end
-        app.model.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
-    catch ME
-        error('Failed to create model: %s', ME.message);
-    end
-    
-    app.FitProgress.Text = '30%'; drawnow; pause(0.1);
-    
-    % FIT WITH ACTUAL LOADED DATA - THIS IS THE KEY
-    fitResults = app.model.fit(app.dataLoader);
-    
-    app.parameters = app.model.parameters;
-    app.updateParameterTable();
-    
-    app.FitProgress.Text = '70%'; drawnow; pause(0.1);
-    
-    if ~isfolder('config'), mkdir('config'); end
-    save('config/modelParams.mat', 'fitResults');
-    
-    app.FitProgress.Text = '100%';
-    app.FitStatusLabel.Text = sprintf('✓ Fit complete! R²=%.4f', fitResults.avgR2);
-    
-    if ~isstruct(app.stateManager)
-        try, app.stateManager.transition('Fitted'); catch, app.onFitted(); end
-    else
-        app.onFitted();
-    end
-    app.updateUIState();
-    app.logger.info('Fitting complete');
-    
-catch ME
-    app.logger.error('Fitting failed: %s', ME.message);
-    app.FitStatusLabel.Text = sprintf('ERROR: %s', ME.message);
-    app.FitProgress.Text = '0%';
-    if ~isstruct(app.stateManager)
-        try, app.stateManager.transition('Error'); catch, app.onErrorReset(); end
-    else
-        app.onErrorReset();
-    end
-    app.updateUIState();
-end
-            
-            app.isFitting = false;
-            app.FitBtn.Enable = 'on';
-            app.CancelFitBtn.Enable = 'off';
+        
+        app.model.getParameters().setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
+        app.FitProgress.Text = '30%'; drawnow;
+        
+        fitResults = app.model.fit(app.dataLoader);
+        
+        if ~isfield(fitResults,'n_success') || fitResults.n_success < 1 || ...
+           ~isfield(fitResults,'avgR2') || ~isfinite(fitResults.avgR2)
+            error('Model fitting produced no successful fits.');
         end
+        
+        app.parameters = app.model.getParameters();
+        app.updateParameterTable();
+        
+        app.FitProgress.Text = '70%'; drawnow;
+        if ~isfolder('config'), mkdir('config'); end
+        save('config/modelParams.mat', 'fitResults');
+        
+        app.FitProgress.Text = '100%';
+        app.FitStatusLabel.Text = sprintf('✓ Fit complete! R²=%.4f', fitResults.avgR2);
+        
+        if ~isstruct(app.stateManager)
+            try, app.stateManager.transition('Fitted'); catch, app.onFitted(); end
+        else
+            app.onFitted();
+        end
+        app.updateUIState();
+        app.logger.info('Fitting complete');
+        
+    catch ME
+        app.logger.error('Fitting failed: %s', ME.message);
+        app.FitStatusLabel.Text = sprintf('ERROR: %s', ME.message);
+        app.FitProgress.Text = '0%';
+        if ~isstruct(app.stateManager)
+            try, app.stateManager.transition('Error'); catch, app.onErrorReset(); end
+        else
+            app.onErrorReset();
+        end
+        app.updateUIState();
+    end
+    
+    app.isFitting = false;
+    app.FitBtn.Enable = 'on';
+    app.CancelFitBtn.Enable = 'off';
+end
 
         function cancelFit(app)
             if app.isFitting
@@ -923,7 +938,7 @@ end
             app.logger.info('Model changed to: %s', app.ModelDropdown.Value);
             app.isFitted = false;
             if ~isstruct(app.stateManager)
-                try, app.stateManager.transition('DataLoaded'); catch, end
+                try app.stateManager.transition('DataLoaded'); catch, end
             end
             app.updateUIState();
         end

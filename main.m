@@ -31,7 +31,8 @@ function setupPaths()
     addpath(genpath(baseDir));
     
     % Create required directories
-    dirs = {'data', 'results', 'results/fits', 'results/simulations', ...
+    dirs = {'data', 'results', 'results/fits', 'results/simulations', ...clc
+        
             'results/exports', 'config'};
     for i = 1:length(dirs)
         dirPath = fullfile(baseDir, dirs{i});

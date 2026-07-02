@@ -117,11 +117,11 @@ classdef ShirinskayaModel < OECT.Model
         
         function fitResults = fit(obj, data)
             obj.logger.info('Starting Shirinskaya model fit');
-            obj.logger.info('Data: %d transient files', length(data.transient.filenames));
+            nFiles = obj.getTransientCount(data);
+            obj.logger.info('Data: %d transient files', nFiles);
             
             conductance = obj.extractConductance(data);
             
-            nFiles = length(data.transient.filenames);
             allResults = cell(nFiles, 1);
             
             if obj.canUseParallel()
@@ -204,7 +204,7 @@ classdef ShirinskayaModel < OECT.Model
             d_sigma = gradient(sigma_bins, centers);
             abs_d_sigma = abs(d_sigma);
             sigma_peak = max(sigma_bins);
-            d_sigma_norm = abs_d_sigma / sigma_peak;
+            d_sigma_norm = abs_d_sigma / max(sigma_peak, eps);
             
             plateau_threshold = 0.05;
             plateau_mask = d_sigma_norm < plateau_threshold;
@@ -219,20 +219,34 @@ classdef ShirinskayaModel < OECT.Model
                 sigma_max = sigma_peak;
             end
             
-            sigma = sigma_bins / sigma_max;
+            sigma = sigma_bins / max(sigma_max, eps);
             Vg_lookup = centers;
         end
         
         function result = fitSingleFile(obj, data, idx, conductance)
-            parsed = data.transient.parsed{idx};
+            %#ok<INUSD> conductance
+            parsed = obj.getTransientRecord(data, idx); % FIX
             
             Vgs = parsed.filename_Vgs;
             if isnan(Vgs)
-                Vgs = mean(parsed.Vgs);
+                if isfield(parsed,'Vgs') && ~isempty(parsed.Vgs)
+                    Vgs = mean(parsed.Vgs);
+                elseif isfield(parsed,'gateVoltage') && ~isempty(parsed.gateVoltage)
+                    Vgs = mean(parsed.gateVoltage);
+                else
+                    Vgs = 0;
+                end
             end
+            
             Vds = parsed.filename_Vds;
             if isnan(Vds)
-                Vds = mean(parsed.Vds);
+                if isfield(parsed,'Vds') && ~isempty(parsed.Vds)
+                    Vds = mean(parsed.Vds);
+                elseif isfield(parsed,'drainVoltage') && ~isempty(parsed.drainVoltage)
+                    Vds = mean(parsed.drainVoltage);
+                else
+                    Vds = 0;
+                end
             end
             
             gm_val = obj.gm_inter(Vgs, Vds);
@@ -241,16 +255,27 @@ classdef ShirinskayaModel < OECT.Model
             t = parsed.time;
             Id = parsed.drainCurrent;
             
-            t_clean = t(t > 0 & isfinite(Id));
-            Id_clean = Id(t > 0 & isfinite(Id));
+            valid = (t > 0) & isfinite(t) & isfinite(Id);
+            t_clean = t(valid);
+            Id_clean = Id(valid);
             
-            if length(t_clean) < 50
+            if numel(t_clean) < 50
                 result = obj.createFailedResult('Not enough data points');
                 return;
             end
+
+            [t_clean, sortIdx] = sort(t_clean(:), 'ascend');
+            Id_clean = Id_clean(sortIdx);
+            [t_unique, ia] = unique(t_clean, 'stable');
+            Id_unique = Id_clean(ia);
+
+            if numel(t_unique) < 50
+                result = obj.createFailedResult('Not enough unique time points');
+                return;
+            end
             
-            t_fit = logspace(log10(min(t_clean)), log10(max(t_clean)), 250)';
-            Id_fit = interp1(t_clean, Id_clean, t_fit, 'pchip');
+            t_fit = logspace(log10(min(t_unique)), log10(max(t_unique)), 250)';
+            Id_fit = interp1(t_unique, Id_unique, t_fit, 'pchip', 'extrap');
             
             weights = 1 ./ sqrt(t_fit + 1e-6);
             weights = weights / median(weights);
@@ -284,13 +309,10 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function [p_opt, info] = fitRC(obj, t, Id, Vgs, Vds, gm_val, I0, weights)
-            % Fit RC model parameters
-            
             lb = [1, 1, 1e-12, 0];
             ub = [1e7, 1e9, 1, 1];
             p0 = [2e3, 15e4, 3e-3, 0.5];
             
-            % Model function
             function I = rc_model(p)
                 Rs = p(1);
                 Rd = p(2);
@@ -308,7 +330,6 @@ classdef ShirinskayaModel < OECT.Model
                 I = I0 + term_1 - term_2 .* exp(-t ./ tau);
             end
             
-            % Residual
             function r = residual(p)
                 I = rc_model(p);
                 if any(~isfinite(I))
@@ -328,7 +349,6 @@ classdef ShirinskayaModel < OECT.Model
                 'ub', ub, ...
                 'options', options);
             
-            % MultiStart
             nStarts = 100;
             startPoints = zeros(nStarts, 4);
             
@@ -358,7 +378,7 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function [Id_fit, tau] = evaluateRC(obj, p, t, Vgs, Vds, gm_val, I0)
-            % Evaluate RC model
+            %#ok<INUSD> Vds
             Rs = p(1);
             Rd = p(2);
             Cd = p(3);
@@ -369,6 +389,60 @@ classdef ShirinskayaModel < OECT.Model
             term_2 = Vgs * Rd * (gm_val * Rs + f) / (Rs * Rd + Rs * Rs);
             Id_fit = I0 + term_1 - term_2 .* exp(-t ./ tau);
         end
+        function name = getModelName(obj)
+    %#ok<MANU>
+    name = 'Shirinskaya';
+end
+
+function description = getModelDescription(obj)
+    %#ok<MANU>
+    description = 'Shirinskaya PNP+RC model for OECTs';
+end
+
+function paramNames = getParameterNames(obj)
+    %#ok<MANU>
+    paramNames = {'conductance_max', 'Rs', 'Rd', 'Cd', 'f', 'holes_mobility'};
+end
+
+function bounds = getParameterBounds(obj)
+    %#ok<MANU>
+    bounds = struct( ...
+        'conductance_max', [0.1, 1e6], ...
+        'Rs', [1, 1e7], ...
+        'Rd', [1, 1e9], ...
+        'Cd', [1e-12, 1], ...
+        'f', [0, 1], ...
+        'holes_mobility', [1e-6, 1]);
+end
+
+function [Vg, Id, gm] = transferCharacteristics(obj, Vg_range, Vds_fixed)
+    if nargin < 2 || isempty(Vg_range), Vg_range = linspace(-0.6, 0.6, 50); end
+    if nargin < 3 || isempty(Vds_fixed), Vds_fixed = -0.2; end
+    
+    Id = zeros(size(Vg_range));
+    for i = 1:numel(Vg_range)
+        if abs(Vds_fixed) > 1e-10
+            Id(i) = obj.I_steady(Vg_range(i), Vds_fixed);
+        else
+            Id(i) = 0;
+        end
+    end
+    
+    Vg = Vg_range;
+    gm = gradient(Id, Vg_range);
+end
+
+function [Vd, Id] = outputCharacteristics(obj, Vg_fixed, Vd_range)
+    if nargin < 2 || isempty(Vg_fixed), Vg_fixed = -0.2; end
+    if nargin < 3 || isempty(Vd_range), Vd_range = linspace(-0.6, 0.6, 40); end
+    
+    Id = zeros(size(Vd_range));
+    for i = 1:numel(Vd_range)
+        Id(i) = obj.I_steady(Vg_fixed, Vd_range(i));
+    end
+    
+    Vd = Vd_range;
+end
         
         function can = canUseParallel(obj)
             can = license('test', 'Distrib_Computing_Toolbox') && ...
@@ -393,8 +467,41 @@ classdef ShirinskayaModel < OECT.Model
             metrics.R2 = 1 - sum(res.^2) / (sum((y_true - mean(y_true)).^2) + eps);
         end
         
+        function parsed = getTransientRecord(obj, data, idx)
+            tr = data.transient;
+            if isfield(tr, 'parsed') && ~isempty(tr.parsed)
+                parsed = tr.parsed{idx}; return;
+            end
+            if isfield(tr, 'data') && ~isempty(tr.data)
+                parsed = tr.data{idx}; return;
+            end
+            if isfield(tr, 'files') && ~isempty(tr.files)
+                parsed = tr.files{idx}; return;
+            end
+            if iscell(tr)
+                parsed = tr{idx}; return;
+            end
+            error('OECT:TransientFormat', 'Transient data format unsupported');
+        end
+        
+        function n = getTransientCount(obj, data)
+            tr = data.transient;
+            if isfield(tr, 'filenames') && ~isempty(tr.filenames)
+                n = numel(tr.filenames);
+            elseif isfield(tr, 'parsed') && ~isempty(tr.parsed)
+                n = numel(tr.parsed);
+            elseif isfield(tr, 'data') && ~isempty(tr.data)
+                n = numel(tr.data);
+            elseif isfield(tr, 'files') && ~isempty(tr.files)
+                n = numel(tr.files);
+            elseif iscell(tr)
+                n = numel(tr);
+            else
+                error('OECT:TransientFormat', 'No transient records found');
+            end
+        end
+        
         function fitResults = aggregateFits(obj, allResults)
-            % FIX: allResults is a cell array
             success_mask = cellfun(@(r) isstruct(r) && isfield(r,'success') && r.success, allResults);
             good_idx = find(success_mask);
             
