@@ -387,6 +387,9 @@ classdef OECT_GUI < matlab.apps.AppBase
                     app.FitBtn.Enable = 'off';
                     app.RunTestsBtn.Enable = 'off';
             end
+             if app.isLoaded && ~app.isFitting
+                app.FitBtn.Enable = 'on';
+            end
         end
 
         function setUIEnabled(app, group, enabled)

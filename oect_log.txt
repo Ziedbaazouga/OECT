@@ -113,3 +113,12 @@
 [2026-07-02 10:06:22] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 10:06:23] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
 [2026-07-02 10:06:23] [INFO] [GUI] Data loaded
 [2026-07-02 10:06:23] [INFO] [GUI] Data loaded successfully
+[2026-07-02 10:11:01] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 10:11:02] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 10:11:02] [INFO] [GUI] GUI ready
+[2026-07-02 10:11:50] [INFO] [GUI] Loading data...
+[2026-07-02 10:11:50] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 10:11:51] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
+[2026-07-02 10:11:51] [INFO] [GUI] Data loaded
+[2026-07-02 10:11:51] [INFO] [GUI] Data loaded successfully
+[2026-07-02 10:11:53] [ERROR] [GUI] Fitting failed: Unrecognized field name "parsed".
+[2026-07-02 10:11:53] [INFO] [GUI] Error state reset
