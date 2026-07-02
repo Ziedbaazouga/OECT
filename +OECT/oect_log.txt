@@ -1,0 +1,189 @@
+[2026-07-02 13:09:47] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 13:09:48] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 13:09:48] [INFO] [GUI] GUI ready
+[2026-07-02 13:10:13] [INFO] [GUI] Loading data...
+[2026-07-02 13:10:20] [WARN] [GUI] Steady-state load failed: Steady table format invalid: expected >=17 rows and >=45 cols.
+[2026-07-02 13:10:26] [WARN] [GUI] Transient load failed: Unrecognized method, property, or field 'transient' for class 'OECT.DataLoader'.
+[2026-07-02 13:10:26] [ERROR] [GUI] Data loading failed: Transient data failed to load. Check transient files/sheets format.
+[2026-07-02 13:10:26] [INFO] [GUI] Error state reset
+[2026-07-02 13:11:35] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 13:11:35] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 13:11:35] [INFO] [GUI] GUI ready
+[2026-07-02 13:12:02] [INFO] [GUI] Loading data...
+[2026-07-02 13:12:02] [WARN] [GUI] Steady-state load failed: Unrecognized method, property, or field 'loadSteadyState' for class 'OECT.DataLoader'.
+[2026-07-02 13:12:02] [WARN] [GUI] Transient load failed: Unrecognized method, property, or field 'loadTransient' for class 'OECT.DataLoader'.
+[2026-07-02 13:12:02] [ERROR] [GUI] Data loading failed: Transient data failed to load. Check transient files/sheets format.
+[2026-07-02 13:12:02] [INFO] [GUI] Error state reset
+[2026-07-02 13:15:12] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 13:15:12] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 13:15:12] [INFO] [GUI] GUI ready
+[2026-07-02 13:15:40] [INFO] [GUI] Loading data...
+[2026-07-02 13:15:40] [WARN] [GUI] Steady-state load failed: Unrecognized method, property, or field 'loadSteadyState' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:40] [WARN] [GUI] Transient load failed: Unrecognized method, property, or field 'loadTransient' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:40] [ERROR] [GUI] Data loading failed: Transient data failed to load. Check transient files/sheets format.
+[2026-07-02 13:15:40] [INFO] [GUI] Error state reset
+[2026-07-02 13:15:42] [INFO] [GUI] Loading data...
+[2026-07-02 13:15:42] [WARN] [GUI] Steady-state load failed: Unrecognized method, property, or field 'loadSteadyState' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:42] [WARN] [GUI] Transient load failed: Unrecognized method, property, or field 'loadTransient' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:42] [ERROR] [GUI] Data loading failed: Transient data failed to load. Check transient files/sheets format.
+[2026-07-02 13:15:42] [INFO] [GUI] Error state reset
+[2026-07-02 13:15:42] [INFO] [GUI] Loading data...
+[2026-07-02 13:15:42] [WARN] [GUI] Steady-state load failed: Unrecognized method, property, or field 'loadSteadyState' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:42] [WARN] [GUI] Transient load failed: Unrecognized method, property, or field 'loadTransient' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:42] [ERROR] [GUI] Data loading failed: Transient data failed to load. Check transient files/sheets format.
+[2026-07-02 13:15:42] [INFO] [GUI] Error state reset
+[2026-07-02 13:15:43] [INFO] [GUI] Loading data...
+[2026-07-02 13:15:43] [WARN] [GUI] Steady-state load failed: Unrecognized method, property, or field 'loadSteadyState' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:43] [WARN] [GUI] Transient load failed: Unrecognized method, property, or field 'loadTransient' for class 'OECT.DataLoader'.
+[2026-07-02 13:15:43] [ERROR] [GUI] Data loading failed: Transient data failed to load. Check transient files/sheets format.
+[2026-07-02 13:15:43] [INFO] [GUI] Error state reset
+[2026-07-02 14:17:15] [INFO] [GUI] Loading data...
+[2026-07-02 14:17:15] [WARN] [GUI] Steady-state load failed: Unrecognized method, property, or field 'loadSteadyState' for class 'OECT.DataLoader'.
+[2026-07-02 14:17:15] [WARN] [GUI] Transient load failed: Unrecognized method, property, or field 'loadTransient' for class 'OECT.DataLoader'.
+[2026-07-02 14:17:15] [ERROR] [GUI] Data loading failed: Transient data failed to load. Check transient files/sheets format.
+[2026-07-02 14:17:15] [INFO] [GUI] Error state reset
+[2026-07-02 14:18:22] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:18:22] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:18:22] [INFO] [GUI] GUI ready
+[2026-07-02 14:18:47] [INFO] [GUI] Loading data...
+[2026-07-02 14:18:48] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:18:50] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:18:50] [INFO] [GUI] Data loaded
+[2026-07-02 14:18:50] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:18:53] [ERROR] [GUI] Fitting failed: Abstract classes cannot be instantiated. Class 'OECT.BisquertModel' inherits abstract methods or properties but does not implement them. See the <a href="matlab:matlab.metadata.abstractDetails('OECT.BisquertModel')">list of methods and properties</a> that 'OECT.BisquertModel' must implement if you do not intend the class to be abstract.
+[2026-07-02 14:18:53] [INFO] [GUI] Error state reset
+[2026-07-02 14:21:08] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:21:08] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:21:08] [INFO] [GUI] GUI ready
+[2026-07-02 14:21:29] [INFO] [GUI] Loading data...
+[2026-07-02 14:21:30] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:21:31] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:21:31] [INFO] [GUI] Data loaded
+[2026-07-02 14:21:32] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:21:33] [INFO] [BisquertModel] Starting Bisquert model fit
+[2026-07-02 14:21:33] [INFO] [BisquertModel] Data: 17 transient files
+[2026-07-02 14:21:37] [INFO] [BisquertModel] file 1: R2=-146496962845124545176666112.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:38] [INFO] [BisquertModel] file 2: R2=-13122433814310943476154368.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:38] [INFO] [BisquertModel] file 3: R2=-12810253505820641890140160.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:39] [INFO] [BisquertModel] file 4: R2=-239770922053532395967086592.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:40] [INFO] [BisquertModel] file 5: R2=-39167841628152020907065344.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:41] [INFO] [BisquertModel] file 6: R2=-91061535151777216037126144.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:41] [INFO] [BisquertModel] file 7: R2=-9037394824935448894242816.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:42] [INFO] [BisquertModel] file 8: R2=-173388279522136774806601728.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:43] [INFO] [BisquertModel] file 9: R2=-124665496930728803529916416.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:43] [INFO] [BisquertModel] file 10: R2=-29399746394727040868679680.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:44] [INFO] [BisquertModel] file 11: R2=-16694990564585533163438080.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:44] [INFO] [BisquertModel] file 12: R2=-1269581066145959539409682432.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:45] [INFO] [BisquertModel] file 13: R2=-31039028955806073408716800.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:46] [INFO] [BisquertModel] file 14: R2=-67669026280397270979444736.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:46] [INFO] [BisquertModel] file 15: R2=-12548011021409201665605632.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:47] [INFO] [BisquertModel] file 16: R2=-900900685177648765508517888.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:47] [INFO] [BisquertModel] file 17: R2=-56306292822755444638351360.0000 tau=1.000e-02 M0=1.000e+17 f=0.500
+[2026-07-02 14:21:48] [INFO] [BisquertModel] Fit complete. R2 = -190215292214106325633728512.0000
+[2026-07-02 14:21:49] [INFO] [GUI] Parameters fitted
+[2026-07-02 14:21:49] [INFO] [GUI] Fitting complete
+[2026-07-02 14:25:46] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:25:46] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:25:46] [INFO] [GUI] GUI ready
+[2026-07-02 14:26:12] [INFO] [GUI] Loading data...
+[2026-07-02 14:26:13] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:26:15] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:26:15] [INFO] [GUI] Data loaded
+[2026-07-02 14:26:15] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:26:16] [INFO] [BisquertModel] Starting Bisquert fit via getModelParameters (old-old path)
+[2026-07-02 14:26:16] [ERROR] [GUI] Fitting failed: steadyState data missing.
+[2026-07-02 14:26:16] [INFO] [GUI] Error state reset
+[2026-07-02 14:27:59] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:27:59] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:27:59] [INFO] [GUI] GUI ready
+[2026-07-02 14:28:22] [INFO] [GUI] Loading data...
+[2026-07-02 14:28:23] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:28:25] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:28:25] [INFO] [GUI] Data loaded
+[2026-07-02 14:28:25] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:28:28] [INFO] [BisquertModel] Starting Bisquert fit via getModelParameters (old-old path)
+[2026-07-02 14:28:28] [ERROR] [GUI] Fitting failed: steadyState data missing.
+[2026-07-02 14:28:28] [INFO] [GUI] Error state reset
+[2026-07-02 14:28:29] [INFO] [BisquertModel] Starting Bisquert fit via getModelParameters (old-old path)
+[2026-07-02 14:28:29] [ERROR] [GUI] Fitting failed: steadyState data missing.
+[2026-07-02 14:28:29] [INFO] [GUI] Error state reset
+[2026-07-02 14:28:30] [INFO] [BisquertModel] Starting Bisquert fit via getModelParameters (old-old path)
+[2026-07-02 14:28:30] [ERROR] [GUI] Fitting failed: steadyState data missing.
+[2026-07-02 14:28:30] [INFO] [GUI] Error state reset
+[2026-07-02 14:40:38] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:40:38] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:40:38] [INFO] [GUI] GUI ready
+[2026-07-02 14:41:01] [INFO] [GUI] Loading data...
+[2026-07-02 14:41:02] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:41:03] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:41:03] [INFO] [GUI] Data loaded
+[2026-07-02 14:41:03] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:41:06] [INFO] [BisquertModel] Starting Bisquert fit (embedded old-old pipeline)
+[2026-07-02 14:41:06] [INFO] [BisquertModel] Bisquert fit done: n_success=17/17, avgR2=-501375455106249.0000
+[2026-07-02 14:41:06] [INFO] [GUI] Parameters fitted
+[2026-07-02 14:41:06] [INFO] [GUI] Fitting complete
+[2026-07-02 14:43:33] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:43:33] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:43:33] [INFO] [GUI] GUI ready
+[2026-07-02 14:43:45] [INFO] [GUI] Loading data...
+[2026-07-02 14:43:45] [ERROR] [GUI] Data loading failed: Please select transient files
+[2026-07-02 14:43:45] [INFO] [GUI] Error state reset
+[2026-07-02 14:43:56] [INFO] [GUI] Loading data...
+[2026-07-02 14:43:56] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:43:58] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:43:58] [INFO] [GUI] Data loaded
+[2026-07-02 14:43:58] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:44:00] [INFO] [BisquertModel] Starting Bisquert fit (embedded old-old pipeline)
+[2026-07-02 14:44:00] [INFO] [BisquertModel] Bisquert fit done: n_success=17/17, avgR2=-501375455106249.0000
+[2026-07-02 14:44:00] [INFO] [GUI] Parameters fitted
+[2026-07-02 14:44:00] [INFO] [GUI] Fitting complete
+[2026-07-02 14:50:01] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:50:01] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:50:01] [INFO] [GUI] GUI ready
+[2026-07-02 14:50:23] [INFO] [GUI] Loading data...
+[2026-07-02 14:50:24] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:50:25] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:50:25] [INFO] [GUI] Data loaded
+[2026-07-02 14:50:25] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:50:29] [INFO] [BisquertModel] Starting Bisquert fit (embedded old-old pipeline)
+[2026-07-02 14:50:29] [ERROR] [GUI] Fitting failed: Index in position 1 exceeds array bounds.
+[2026-07-02 14:50:29] [INFO] [GUI] Error state reset
+[2026-07-02 14:50:32] [INFO] [BisquertModel] Starting Bisquert fit (embedded old-old pipeline)
+[2026-07-02 14:50:32] [ERROR] [GUI] Fitting failed: Index in position 1 exceeds array bounds.
+[2026-07-02 14:50:32] [INFO] [GUI] Error state reset
+[2026-07-02 14:52:25] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:52:25] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:52:25] [INFO] [GUI] GUI ready
+[2026-07-02 14:52:45] [INFO] [GUI] Loading data...
+[2026-07-02 14:52:45] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:52:47] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:52:47] [INFO] [GUI] Data loaded
+[2026-07-02 14:52:47] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:52:50] [INFO] [BisquertModel] Starting Bisquert fit (embedded old-old pipeline)
+[2026-07-02 14:52:50] [ERROR] [GUI] Fitting failed: Conversion to double from cell is not possible.
+[2026-07-02 14:52:50] [INFO] [GUI] Error state reset
+[2026-07-02 14:54:48] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 14:54:49] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 14:54:49] [INFO] [GUI] GUI ready
+[2026-07-02 14:55:09] [INFO] [GUI] Loading data...
+[2026-07-02 14:55:09] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 14:55:11] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 14:55:11] [INFO] [GUI] Data loaded
+[2026-07-02 14:55:11] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 14:55:13] [INFO] [BisquertModel] Starting Bisquert fit (embedded old-old pipeline)
+[2026-07-02 14:55:13] [ERROR] [GUI] Fitting failed: Failed to calculate valid P0/M0_scale. Check steady-state data.
+[2026-07-02 14:55:13] [INFO] [GUI] Error state reset
+[2026-07-02 15:00:33] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 15:00:33] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 15:00:33] [INFO] [GUI] GUI ready
+[2026-07-02 15:01:04] [INFO] [GUI] Loading data...
+[2026-07-02 15:01:04] [INFO] [DataLoader] Steady-state data loaded successfully
+[2026-07-02 15:01:06] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 15:01:06] [INFO] [GUI] Data loaded
+[2026-07-02 15:01:06] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 15:01:21] [INFO] [BisquertModel] Starting Bisquert fit (embedded old-old pipeline)
+[2026-07-02 15:01:52] [INFO] [BisquertModel] Bisquert fit done: n_success=13/17, avgR2=0.8863
+[2026-07-02 15:01:53] [INFO] [GUI] Parameters fitted
+[2026-07-02 15:01:53] [INFO] [GUI] Fitting complete
+[2026-07-02 15:02:39] [ERROR] [GUI] Tests failed: Incorrect dimensions for matrix multiplication. Check that the number of columns in the first matrix matches the number of rows in the second matrix. To operate on each element of the matrix individually, use TIMES (.*) for elementwise multiplication.
+[2026-07-02 15:02:39] [INFO] [GUI] Error state reset
