@@ -437,3 +437,33 @@
 [2026-07-02 10:48:12] [INFO] [BisquertModel] Fit complete. R2 = -Inf
 [2026-07-02 10:48:12] [ERROR] [GUI] Fitting failed: Model fitting produced no successful fits.
 [2026-07-02 10:48:12] [INFO] [GUI] Error state reset
+[2026-07-02 11:04:35] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 11:04:36] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 11:04:36] [INFO] [GUI] GUI ready
+[2026-07-02 11:04:51] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 11:04:51] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 11:04:51] [INFO] [GUI] GUI ready
+[2026-07-02 11:05:57] [INFO] [GUI] Loading data...
+[2026-07-02 11:05:57] [INFO] [DataLoader] Loading steady-state: C:\Users\ziedb\Desktop\OECT_Modeling_Suite\measurements\Transfer Measurements.xls
+[2026-07-02 11:06:01] [INFO] [DataLoader] Steady-state loaded successfully
+[2026-07-02 11:06:01] [INFO] [DataLoader] Loading 17 transient files
+[2026-07-02 11:06:08] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 11:06:08] [INFO] [GUI] Data loaded
+[2026-07-02 11:06:08] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 11:06:23] [INFO] [BisquertModel] Starting Bisquert model fit
+[2026-07-02 11:06:23] [INFO] [BisquertModel] Data: 17 transient files
+[2026-07-02 11:06:23] [INFO] [BisquertModel] Using serial processing
+[2026-07-02 11:06:36] [ERROR] [GUI] Fitting failed: Unable to set the 'params' property of class '<a href="matlab:doc OECT.Parameters">Parameters</a>' because it is read-only.
+[2026-07-02 11:06:36] [INFO] [GUI] Error state reset
+[2026-07-02 11:09:29] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 11:09:29] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 11:09:29] [INFO] [GUI] GUI ready
+[2026-07-02 11:09:54] [INFO] [GUI] Loading data...
+[2026-07-02 11:09:54] [INFO] [DataLoader] Loading steady-state: C:\Users\ziedb\Desktop\OECT_Modeling_Suite\measurements\Transfer Measurements.xls
+[2026-07-02 11:09:54] [INFO] [DataLoader] Steady-state loaded successfully
+[2026-07-02 11:09:54] [INFO] [DataLoader] Loading 17 transient files
+[2026-07-02 11:10:01] [INFO] [DataLoader] Transient data loaded successfully
+[2026-07-02 11:10:01] [INFO] [GUI] Data loaded
+[2026-07-02 11:10:01] [INFO] [GUI] Data loaded successfully (steady=1, transient=1)
+[2026-07-02 11:10:15] [ERROR] [GUI] Fitting failed: Abstract classes cannot be instantiated. Class 'OECT.BisquertModel' inherits abstract methods or properties but does not implement them. See the <a href="matlab:matlab.metadata.abstractDetails('OECT.BisquertModel')">list of methods and properties</a> that 'OECT.BisquertModel' must implement if you do not intend the class to be abstract.
+[2026-07-02 11:10:15] [INFO] [GUI] Error state reset

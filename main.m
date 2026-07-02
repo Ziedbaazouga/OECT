@@ -31,8 +31,7 @@ function setupPaths()
     addpath(genpath(baseDir));
     
     % Create required directories
-    dirs = {'data', 'results', 'results/fits', 'results/simulations', ...clc
-        
+    dirs = {'data', 'results', 'results/fits', 'results/simulations', ...
             'results/exports', 'config'};
     for i = 1:length(dirs)
         dirPath = fullfile(baseDir, dirs{i});
@@ -59,7 +58,7 @@ function runBatchMode()
         error('Batch configuration not found. Create config/batch_config.mat');
     end
     
-    load(configFile);
+    load(configFile, 'batch');
     
     % Process each batch item
     for i = 1:length(batch)
@@ -74,7 +73,7 @@ function runBatchMode()
         model = OECT.BisquertModel();
         
         % Fit
-        fitResults = model.fit(loader);
+        fitResults = model.fit(loader); %#ok<NASGU>
         
         % Run tests
         testSuite = OECT.TestSuite(model);
@@ -94,6 +93,7 @@ function runTests()
     
     % Test parameter creation
     p = OECT.Parameters('Bisquert');
+    p.validate();
     assert(p.isValid, 'Parameter validation failed');
     
     % Test model
