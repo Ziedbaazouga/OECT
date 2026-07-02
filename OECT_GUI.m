@@ -506,13 +506,15 @@ classdef OECT_GUI < matlab.apps.AppBase
                 app.SheetDropdown.Items = sheets;
                 if ~isempty(sheets), app.SheetDropdown.Value = sheets{1}; end
                 
-                if ~isstruct(app.stateManager)
-                    try, app.stateManager.transition('DataLoaded'); catch, app.onDataLoaded(); end
-                else
-                    app.onDataLoaded();
-                end
-                app.updateUIState();
-                app.logger.info('Data loaded successfully');
+                % Always call onDataLoaded directly to ensure UI updates immediately
+app.onDataLoaded();
+
+if ~isstruct(app.stateManager)
+    try, app.stateManager.transition('DataLoaded'); catch, end
+end
+app.updateUIState();
+app.logger.info('Data loaded successfully');
+drawnow;  % Force GUI to update
                 
             catch ME
                 app.logger.error('Data loading failed: %s', ME.message);
@@ -523,6 +525,7 @@ classdef OECT_GUI < matlab.apps.AppBase
                     app.onErrorReset();
                 end
                 app.updateUIState();
+                 drawnow;
             end
         end
 

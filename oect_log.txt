@@ -58,3 +58,19 @@
 [2026-07-02 08:25:11] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 08:25:19] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
 [2026-07-02 08:25:19] [INFO] [StateManager] State: DataLoaded -> DataLoaded
 [2026-07-02 08:25:19] [INFO] [GUI] Data loaded successfully
+[2026-07-02 09:03:37] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 09:03:37] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 09:03:37] [INFO] [GUI] GUI ready
+[2026-07-02 09:04:37] [INFO] [GUI] Loading data...
+[2026-07-02 09:04:37] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 09:04:38] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
+[2026-07-02 09:04:38] [INFO] [GUI] Data loaded
+[2026-07-02 09:04:38] [INFO] [StateManager] State: DataLoaded -> DataLoaded
+[2026-07-02 09:04:38] [INFO] [GUI] Data loaded successfully
+[2026-07-02 09:04:40] [ERROR] [GUI] Fitting failed: No data has been loaded. Please load data before fitting.
+[2026-07-02 09:04:40] [INFO] [StateManager] State: Error -> Error
+[2026-07-02 09:04:46] [ERROR] [GUI] Fitting failed: No data has been loaded. Please load data before fitting.
+[2026-07-02 09:04:46] [WARN] [StateManager] Transition Error -> Error not allowed
+[2026-07-02 09:04:47] [ERROR] [GUI] Fitting failed: No data has been loaded. Please load data before fitting.
+[2026-07-02 09:04:47] [WARN] [StateManager] Transition Error -> Error not allowed
+[2026-07-02 09:04:48] [ERROR] [GUI] Fitting failed: No data has been loaded. Please load data before fitting.
+[2026-07-02 09:04:48] [WARN] [StateManager] Transition Error -> Error not allowed
