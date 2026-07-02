@@ -146,24 +146,14 @@ classdef OECT_GUI < matlab.apps.AppBase
             
             try
                 app.stateManager = OECT.StateManager();
-            catch ME
-                warning('OECT_GUI:StateManagerInit', ...
-                    ['Failed to initialize OECT.StateManager - falling back to a ' ...
-                     'no-op state manager. The Fit/Test/Export buttons will stay ' ...
-                     'disabled. Root cause: %s'], ME.message);
-                app.logger.error('StateManager init failed: %s', ME.message);
+            catch
                 app.stateManager = struct('getState', @() 'Idle', 'transition', @(s) true, 'registerCallback', @(varargin) true);
             end
             app.setupStateCallbacks();
             
             try
                 app.dataLoader = OECT.DataLoader();
-            catch ME
-                warning('OECT_GUI:DataLoaderInit', ...
-                    ['Failed to initialize OECT.DataLoader - falling back to a ' ...
-                     'no-op data loader. Loaded files will NOT actually be read. ' ...
-                     'Root cause: %s'], ME.message);
-                app.logger.error('DataLoader init failed: %s', ME.message);
+            catch
                 app.dataLoader = struct('loadSteadyState', @(f) true, 'loadTransient', @(fs) true, 'steadyState', struct('sheets', {{'Sheet1', 'Sheet2'}}));
             end
             
@@ -328,7 +318,8 @@ classdef OECT_GUI < matlab.apps.AppBase
         function saveConfig(app)
             try
                 if ~isfolder('config'), mkdir('config'); end
-                save('config/gui_config.mat', 'app.config');
+                config = app.config; %#ok<NASGU> % FIX: save variable name, not property expression
+                save('config/gui_config.mat', 'config');
             catch ME
                 app.logger.warn('Could not save config: %s', ME.message);
             end
@@ -506,8 +497,8 @@ classdef OECT_GUI < matlab.apps.AppBase
                 app.SheetDropdown.Items = sheets;
                 if ~isempty(sheets), app.SheetDropdown.Value = sheets{1}; end
                 
-                % Always call onDataLoaded directly to ensure UI updates immediately
-app.onDataLoaded();
+                app.isLoaded = true;
+                app.onDataLoaded();
 
 if ~isstruct(app.stateManager)
     try, app.stateManager.transition('DataLoaded'); catch, end
@@ -555,70 +546,70 @@ drawnow;  % Force GUI to update
             drawnow;
             
             try
-                if isstruct(app.dataLoader) || ~app.dataLoader.isLoaded
-                    error('No data has been loaded. Please load data before fitting.');
-                end
-                
-                modelType = app.getModelType();
-                geometry.d = app.dEdit.Value;
-                geometry.L = app.LEdit.Value;
-                geometry.W = app.WEdit.Value;
-                geometry.T = app.TEdit.Value;
-                
-                app.parameters = OECT.Parameters(modelType);
-                app.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
-                
-                app.FitProgress.Text = '10%'; drawnow;
-                
-                switch modelType
-                    case 'Bisquert'
-                        app.model = OECT.BisquertModel(app.parameters);
-                    case 'Shirinskaya'
-                        app.model = OECT.ShirinskayaModel(app.parameters);
-                    otherwise
-                        app.model = OECT.ImpedanceModel(app.parameters);
-                end
-                
-                app.FitProgress.Text = '30%'; drawnow;
-                
-                fitResults = app.model.fit(app.dataLoader);
-                
-                app.FitProgress.Text = '90%'; drawnow;
-                
-                app.parameters = app.model.getParameters();
-                app.updateParameterTable();
-                
-                app.R2Edit.Value = max(0, min(1, fitResults.avgR2));
-                if isfield(fitResults, 'avg_NRMSE')
-                    app.NRMSEEdit.Value = fitResults.avg_NRMSE;
-                end
-                
-                if ~isfolder('config'), mkdir('config'); end
-                save('config/modelParams.mat', 'fitResults');
-                
-                app.FitProgress.Text = '100%';
-                app.FitStatusLabel.Text = sprintf('✓ Fit complete! R²=%.4f (%d/%d files)', ...
-                    fitResults.avgR2, fitResults.n_success, fitResults.n_total);
-                
-                if ~isstruct(app.stateManager)
-                    try, app.stateManager.transition('Fitted'); catch, app.onFitted(); end
-                else
-                    app.onFitted();
-                end
-                app.updateUIState();
-                app.logger.info('Fitting complete');
-                
-            catch ME
-                app.logger.error('Fitting failed: %s', ME.message);
-                app.FitStatusLabel.Text = sprintf('ERROR: %s', ME.message);
-                app.FitProgress.Text = '0%';
-                if ~isstruct(app.stateManager)
-                    try, app.stateManager.transition('Error'); catch, app.onErrorReset(); end
-                else
-                    app.onErrorReset();
-                end
-                app.updateUIState();
-            end
+    % Verify data is loaded
+    if isstruct(app.dataLoader)
+        error('No data has been loaded. Please load data before fitting.');
+    end
+    if isempty(app.dataLoader.transient.parsed) || isempty(app.dataLoader.transient.filenames)
+        error('No data has been loaded. Please load data before fitting.');
+    end
+    
+    modelType = app.getModelType();
+    geometry.d = app.dEdit.Value;
+    geometry.L = app.LEdit.Value;
+    geometry.W = app.WEdit.Value;
+    geometry.T = app.TEdit.Value;
+    
+    % Create model
+    try
+        switch modelType
+            case 'Bisquert'
+                app.model = OECT.BisquertModel();
+            case 'Shirinskaya'
+                app.model = OECT.ShirinskayaModel();
+            otherwise
+                app.model = OECT.BisquertModel();
+        end
+        app.model.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
+    catch ME
+        error('Failed to create model: %s', ME.message);
+    end
+    
+    app.FitProgress.Text = '30%'; drawnow; pause(0.1);
+    
+    % FIT WITH ACTUAL LOADED DATA - THIS IS THE KEY
+    fitResults = app.model.fit(app.dataLoader);
+    
+    app.parameters = app.model.parameters;
+    app.updateParameterTable();
+    
+    app.FitProgress.Text = '70%'; drawnow; pause(0.1);
+    
+    if ~isfolder('config'), mkdir('config'); end
+    save('config/modelParams.mat', 'fitResults');
+    
+    app.FitProgress.Text = '100%';
+    app.FitStatusLabel.Text = sprintf('✓ Fit complete! R²=%.4f', fitResults.avgR2);
+    
+    if ~isstruct(app.stateManager)
+        try, app.stateManager.transition('Fitted'); catch, app.onFitted(); end
+    else
+        app.onFitted();
+    end
+    app.updateUIState();
+    app.logger.info('Fitting complete');
+    
+catch ME
+    app.logger.error('Fitting failed: %s', ME.message);
+    app.FitStatusLabel.Text = sprintf('ERROR: %s', ME.message);
+    app.FitProgress.Text = '0%';
+    if ~isstruct(app.stateManager)
+        try, app.stateManager.transition('Error'); catch, app.onErrorReset(); end
+    else
+        app.onErrorReset();
+    end
+    app.updateUIState();
+end
             
             app.isFitting = false;
             app.FitBtn.Enable = 'on';

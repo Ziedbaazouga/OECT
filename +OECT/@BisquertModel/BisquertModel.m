@@ -133,21 +133,45 @@ classdef BisquertModel < OECT.Model
             t = parsed.time;
             Id = parsed.drainCurrent;
             
-            t_clean = t(t > 0 & isfinite(Id));
-            Id_clean = Id(t > 0 & isfinite(Id));
+            valid = (t > 0) & isfinite(t) & isfinite(Id);
+            t_clean = t(valid);
+            Id_clean = Id(valid);
             
-            if length(t_clean) < 50
+            if numel(t_clean) < 50
                 result = obj.createFailedResult('Not enough data points');
                 return;
             end
+
+            % FIX: ensure monotonic unique time for interp1
+            [t_clean, sortIdx] = sort(t_clean(:), 'ascend');
+            Id_clean = Id_clean(sortIdx);
+            [t_unique, ia] = unique(t_clean, 'stable');
+            Id_unique = Id_clean(ia);
+
+            if numel(t_unique) < 50
+                result = obj.createFailedResult('Not enough unique time points');
+                return;
+            end
             
-            t_fit = logspace(log10(min(t_clean)), log10(max(t_clean)), 250)';
-            Id_fit = interp1(t_clean, Id_clean, t_fit, 'pchip');
+            tmin = min(t_unique);
+            tmax = max(t_unique);
+            if ~(isfinite(tmin) && isfinite(tmax) && tmin > 0 && tmax > tmin)
+                result = obj.createFailedResult('Invalid time window after cleaning');
+                return;
+            end
+
+            t_fit = logspace(log10(tmin), log10(tmax), 250)';
+            Id_fit = interp1(t_unique, Id_unique, t_fit, 'pchip', 'extrap');
+
+            if any(~isfinite(Id_fit))
+                result = obj.createFailedResult('Interpolation produced non-finite values');
+                return;
+            end
             
             try
                 [p_opt, fit_info] = obj.stagedFit(t_fit, Id_fit, Vgs, Vds, uc_val);
                 
-                [fit_curve, M] = obj.evaluateFit(p_opt, t_fit, Vgs, Vds, uc_val);
+                [fit_curve, ~] = obj.evaluateFit(p_opt, t_fit, Vgs, Vds, uc_val);
                 metrics = obj.computeFitMetrics(Id_fit, fit_curve);
                 
                 result = struct();
@@ -169,7 +193,6 @@ classdef BisquertModel < OECT.Model
                 result = obj.createFailedResult(ME.message);
             end
         end
-        
         function [p_opt, info] = stagedFit(obj, t, Id, Vgs, Vds, uc)
             P0 = obj.parameters.P0;
             L = obj.parameters.L;
@@ -335,12 +358,13 @@ classdef BisquertModel < OECT.Model
         end
         
         function fitResults = aggregateFits(obj, allResults)
-            success_mask = arrayfun(@(r) r.success, allResults);
+            % FIX: allResults is a cell array
+            success_mask = cellfun(@(r) isstruct(r) && isfield(r,'success') && r.success, allResults);
             good_idx = find(success_mask);
             
             fitResults = struct();
-            fitResults.n_total = length(allResults);
-            fitResults.n_success = length(good_idx);
+            fitResults.n_total = numel(allResults);
+            fitResults.n_success = numel(good_idx);
             fitResults.n_failed = fitResults.n_total - fitResults.n_success;
             
             if isempty(good_idx)
@@ -350,10 +374,10 @@ classdef BisquertModel < OECT.Model
                 return;
             end
             
-            f_vals = arrayfun(@(i) allResults(i).f, good_idx);
-            tau_vals = arrayfun(@(i) allResults(i).tau_de, good_idx);
-            M0_vals = arrayfun(@(i) allResults(i).M0_fit, good_idx);
-            R2_vals = arrayfun(@(i) allResults(i).R2, good_idx);
+            f_vals = cellfun(@(r) r.f, allResults(good_idx));
+            tau_vals = cellfun(@(r) r.tau_de, allResults(good_idx));
+            M0_vals = cellfun(@(r) r.M0_fit, allResults(good_idx));
+            R2_vals = cellfun(@(r) r.R2, allResults(good_idx));
             
             fitResults.avg_f = median(f_vals);
             fitResults.avg_tau_de = median(tau_vals);
@@ -370,69 +394,6 @@ classdef BisquertModel < OECT.Model
             fitResults.parameters = obj.parameters;
             fitResults.all_results = allResults(good_idx);
             fitResults.good_idx = good_idx;
-        end
-        
-        function name = getModelName(obj)
-            name = 'Bisquert';
-        end
-        
-        function description = getModelDescription(obj)
-            description = 'Bisquert ionic dynamics model for OECTs';
-        end
-        
-        function paramNames = getParameterNames(obj)
-            paramNames = {'P0', 'M0', 'tau_de', 'f', 'uc', 'holes_mobility'};
-        end
-        
-        function bounds = getParameterBounds(obj)
-            bounds = struct(...
-                'P0', [0, 1e30], ...
-                'M0', [0, 1e30], ...
-                'tau_de', [1e-6, 100], ...
-                'f', [0, 1], ...
-                'uc', [-5, 5], ...
-                'holes_mobility', [1e-6, 1]);
-        end
-        
-        function [Vg, Id, gm] = transferCharacteristics(obj, Vg_range, Vds_fixed)
-            if nargin < 2
-                Vg_range = linspace(-0.6, 0.6, 50);
-            end
-            if nargin < 3
-                Vds_fixed = -0.2;
-            end
-            
-            t_settle = linspace(0, 10 * obj.parameters.tau_de, 200);
-            Id = zeros(size(Vg_range));
-            
-            for i = 1:length(Vg_range)
-                Vg_const = Vg_range(i) * ones(size(t_settle));
-                sim = obj.simulate(Vg_const, t_settle, Vds_fixed);
-                Id(i) = sim.Id(end);
-            end
-            
-            Vg = Vg_range;
-            gm = gradient(Id, Vg_range);
-        end
-        
-        function [Vd, Id] = outputCharacteristics(obj, Vg_fixed, Vd_range)
-            if nargin < 2
-                Vg_fixed = -0.2;
-            end
-            if nargin < 3
-                Vd_range = linspace(-0.6, 0.6, 40);
-            end
-            
-            t_settle = linspace(0, 10 * obj.parameters.tau_de, 200);
-            Vg_const = Vg_fixed * ones(size(t_settle));
-            Id = zeros(size(Vd_range));
-            
-            for i = 1:length(Vd_range)
-                sim = obj.simulate(Vg_const, t_settle, Vd_range(i));
-                Id(i) = sim.Id(end);
-            end
-            
-            Vd = Vd_range;
         end
     end
 end

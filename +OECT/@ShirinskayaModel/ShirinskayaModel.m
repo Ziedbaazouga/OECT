@@ -25,25 +25,18 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function buildInterpolants(obj, Sigma, Vg_lookup, Vg_vals, Vd_vals, gm)
-            % Build interpolants from steady-state data
             obj.sigma_inter = @(Vg) interp1(Vg_lookup, Sigma, Vg, 'pchip', 'extrap');
             obj.Vg_lookup = Vg_lookup;
             obj.gm_inter = griddedInterpolant({Vg_vals, Vd_vals}, gm, 'linear', 'nearest');
         end
         
         function sim = simulate(obj, Vg, t, Vds)
-            % Simulate Shirinskaya model
             obj.logger.debug('Simulating with %d time points', length(t));
             obj.checkStop();
             
-            % Extract parameters
             Rs = obj.parameters.Rs;
             Rd = obj.parameters.Rd;
             Cd = obj.parameters.Cd;
-            f = obj.parameters.f;
-            d = obj.parameters.d;
-            L = obj.parameters.L;
-            W = obj.parameters.W;
             
             t = t(:);
             Vg = Vg(:);
@@ -55,17 +48,14 @@ classdef ShirinskayaModel < OECT.Model
                 Vds = Vds(:);
             end
             
-            % Time constant
             tau = Cd * Rd * Rs / (Rd + Rs);
             dt = t(2) - t(1);
             alpha = exp(-dt / max(tau, 1e-12));
             
-            % Settling detection
             settle_samples = max(round(5 * tau / dt), 10);
             rel_tol = 1e-4;
             abs_tol = 1e-12;
             
-            % Initialize
             I_out = zeros(n, 1);
             I_current = obj.I_steady(Vg(1), Vds(1));
             I_out(1) = I_current;
@@ -80,21 +70,17 @@ classdef ShirinskayaModel < OECT.Model
                 Vg_k = Vg(k);
                 Vds_k = Vds(k);
                 
-                % Detect operating point change
                 if Vg_k ~= last_Vg || Vds_k ~= last_Vds
                     stable_count = 0;
                     last_Vg = Vg_k;
                     last_Vds = Vds_k;
                 end
                 
-                % Compute steady-state current
                 I_inf = obj.I_steady(Vg_k, Vds_k);
                 
-                % RC dynamics
                 I_prev = I_current;
                 I_current = I_inf + (I_current - I_inf) * alpha;
                 
-                % Check for settling
                 dI = abs(I_current - I_prev);
                 I_scale = max(abs(I_current), abs_tol);
                 if dI / I_scale < rel_tol
@@ -103,7 +89,6 @@ classdef ShirinskayaModel < OECT.Model
                     stable_count = 0;
                 end
                 
-                % Force settle if stable
                 if stable_count >= settle_samples
                     I_current = I_inf;
                     stable_count = 0;
@@ -120,7 +105,6 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function I = I_steady(obj, Vg, Vds)
-            % Compute steady-state current using sigma integral
             if abs(Vds) < 1e-12
                 I = 0;
             else
@@ -132,11 +116,9 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function fitResults = fit(obj, data)
-            % Fit Shirinskaya model parameters
             obj.logger.info('Starting Shirinskaya model fit');
             obj.logger.info('Data: %d transient files', length(data.transient.filenames));
             
-            % First, get conductance from steady-state
             conductance = obj.extractConductance(data);
             
             nFiles = length(data.transient.filenames);
@@ -163,14 +145,11 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function conductance = extractConductance(obj, data)
-            % Extract conductance from steady-state data
             parsed = data.steadyState.parsed;
-            
             d = obj.parameters.d;
             L = obj.parameters.L;
             W = obj.parameters.W;
             
-            % Reconstruct sigma(V)
             [conductance.sigma, conductance.Vg_lookup, conductance.max] = ...
                 obj.reconstructSigma(parsed, d, L, W);
             
@@ -179,13 +158,10 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function [sigma, Vg_lookup, sigma_max] = reconstructSigma(obj, parsed, d, L, W)
-            % Reconstruct sigma(V) from Id(Vg,Vd)
-            
             Vg = parsed.Vg_sorted;
             Vd = parsed.Vd_sorted;
             Id = parsed.Id_matrix;
             
-            % Build linear system for sigma reconstruction
             Nb = 120;
             Vmin = min(Vg) - min(Vd) - 1e-9;
             Vmax = max(Vg) + 1e-9;
@@ -195,7 +171,6 @@ classdef ShirinskayaModel < OECT.Model
             Iint = -(L/(W*d)) * Id;
             Ivec = Iint(:);
             
-            % Build A matrix
             nMeas = numel(Ivec);
             A = zeros(nMeas, Nb);
             
@@ -222,12 +197,10 @@ classdef ShirinskayaModel < OECT.Model
                 end
             end
             
-            % Regularized solve
             lambda_smooth = 1e-3;
             D2 = diff(eye(Nb), 2);
             sigma_bins = (A'*A + lambda_smooth * (D2'*D2)) \ (A'*Ivec);
             
-            % Extract plateau value (stabilized sigma)
             d_sigma = gradient(sigma_bins, centers);
             abs_d_sigma = abs(d_sigma);
             sigma_peak = max(sigma_bins);
@@ -251,8 +224,6 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function result = fitSingleFile(obj, data, idx, conductance)
-            % Fit a single transient file
-            
             parsed = data.transient.parsed{idx};
             
             Vgs = parsed.filename_Vgs;
@@ -264,11 +235,9 @@ classdef ShirinskayaModel < OECT.Model
                 Vds = mean(parsed.Vds);
             end
             
-            % Get gm and I0
             gm_val = obj.gm_inter(Vgs, Vds);
             I0 = obj.I_steady(Vgs, Vds);
             
-            % Prepare data
             t = parsed.time;
             Id = parsed.drainCurrent;
             
@@ -280,20 +249,17 @@ classdef ShirinskayaModel < OECT.Model
                 return;
             end
             
-            % Resample
             t_fit = logspace(log10(min(t_clean)), log10(max(t_clean)), 250)';
             Id_fit = interp1(t_clean, Id_clean, t_fit, 'pchip');
             
-            % Weights for early-time emphasis
             weights = 1 ./ sqrt(t_fit + 1e-6);
             weights = weights / median(weights);
             tail_start = round(0.9 * length(t_fit));
             weights(tail_start:end) = weights(tail_start:end) * 10;
             weights = weights / mean(weights);
             
-            % Fit parameters
             try
-                [p_opt, info] = obj.fitRC(t_fit, Id_fit, Vgs, Vds, gm_val, I0, weights);
+                [p_opt, ~] = obj.fitRC(t_fit, Id_fit, Vgs, Vds, gm_val, I0, weights);
                 
                 [fit_curve, tau] = obj.evaluateRC(p_opt, t_fit, Vgs, Vds, gm_val, I0);
                 metrics = obj.computeFitMetrics(Id_fit, fit_curve);
@@ -428,12 +394,13 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function fitResults = aggregateFits(obj, allResults)
-            success_mask = arrayfun(@(r) r.success, allResults);
+            % FIX: allResults is a cell array
+            success_mask = cellfun(@(r) isstruct(r) && isfield(r,'success') && r.success, allResults);
             good_idx = find(success_mask);
             
             fitResults = struct();
-            fitResults.n_total = length(allResults);
-            fitResults.n_success = length(good_idx);
+            fitResults.n_total = numel(allResults);
+            fitResults.n_success = numel(good_idx);
             fitResults.n_failed = fitResults.n_total - fitResults.n_success;
             
             if isempty(good_idx)
@@ -443,11 +410,11 @@ classdef ShirinskayaModel < OECT.Model
                 return;
             end
             
-            Rs_vals = arrayfun(@(i) allResults(i).Rs, good_idx);
-            Rd_vals = arrayfun(@(i) allResults(i).Rd, good_idx);
-            Cd_vals = arrayfun(@(i) allResults(i).Cd, good_idx);
-            f_vals = arrayfun(@(i) allResults(i).f, good_idx);
-            R2_vals = arrayfun(@(i) allResults(i).R2, good_idx);
+            Rs_vals = cellfun(@(r) r.Rs, allResults(good_idx));
+            Rd_vals = cellfun(@(r) r.Rd, allResults(good_idx));
+            Cd_vals = cellfun(@(r) r.Cd, allResults(good_idx));
+            f_vals = cellfun(@(r) r.f, allResults(good_idx));
+            R2_vals = cellfun(@(r) r.R2, allResults(good_idx));
             
             fitResults.avg_Rs = median(Rs_vals);
             fitResults.avg_Rd = median(Rd_vals);
@@ -468,88 +435,6 @@ classdef ShirinskayaModel < OECT.Model
             fitResults.parameters = obj.parameters;
             fitResults.all_results = allResults(good_idx);
             fitResults.good_idx = good_idx;
-        end
-        
-        % Required abstract methods
-        function name = getModelName(obj)
-            name = 'Shirinskaya';
-        end
-        
-        function description = getModelDescription(obj)
-            description = 'Shirinskaya PNP+RC model for OECTs';
-        end
-        
-        function paramNames = getParameterNames(obj)
-            paramNames = {'conductance_max', 'Rs', 'Rd', 'Cd', 'f', 'holes_mobility'};
-        end
-        
-        function bounds = getParameterBounds(obj)
-            bounds = struct(...
-                'conductance_max', [0.1, 1e6], ...
-                'Rs', [1, 1e7], ...
-                'Rd', [1, 1e9], ...
-                'Cd', [1e-12, 1], ...
-                'f', [0, 1], ...
-                'holes_mobility', [1e-6, 1]);
-        end
-        
-        function [Vg, Id, gm] = transferCharacteristics(obj, Vg_range, Vds_fixed)
-            if nargin < 2
-                Vg_range = linspace(-0.6, 0.6, 50);
-            end
-            if nargin < 3
-                Vds_fixed = -0.2;
-            end
-            
-            d = obj.parameters.d;
-            L = obj.parameters.L;
-            W = obj.parameters.W;
-            
-            Id = zeros(size(Vg_range));
-            for i = 1:length(Vg_range)
-                if abs(Vds_fixed) > 1e-10
-                    Id(i) = -W * d * (1/L) * ...
-                        integral(obj.sigma_inter, Vg_range(i), Vg_range(i) - Vds_fixed);
-                end
-            end
-            
-            Vg = Vg_range;
-            gm = gradient(Id, Vg_range);
-        end
-        
-        function [Vd, Id] = outputCharacteristics(obj, Vg_fixed, Vd_range)
-            if nargin < 2
-                Vg_fixed = -0.2;
-            end
-            if nargin < 3
-                Vd_range = linspace(-0.6, 0.6, 40);
-            end
-            
-            d = obj.parameters.d;
-            L = obj.parameters.L;
-            W = obj.parameters.W;
-            
-            Id = zeros(size(Vd_range));
-            for i = 1:length(Vd_range)
-                if abs(Vd_range(i)) > 1e-10
-                    Id(i) = -W * d * (1/L) * ...
-                        integral(obj.sigma_inter, Vg_fixed, Vg_fixed - Vd_range(i));
-                end
-            end
-            
-            Vd = Vd_range;
-        end
-    end
-end
-function setGM(obj, gm)
-            % Set transconductance interpolant
-            obj.gm_inter = gm;
-        end
-        
-        function setConductance(obj, sigma_fun, Vg_lookup)
-            % Set conductance function
-            obj.sigma_inter = sigma_fun;
-            obj.Vg_lookup = Vg_lookup;
         end
     end
 end

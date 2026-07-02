@@ -74,3 +74,42 @@
 [2026-07-02 09:04:47] [WARN] [StateManager] Transition Error -> Error not allowed
 [2026-07-02 09:04:48] [ERROR] [GUI] Fitting failed: No data has been loaded. Please load data before fitting.
 [2026-07-02 09:04:48] [WARN] [StateManager] Transition Error -> Error not allowed
+[2026-07-02 09:14:13] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 09:14:13] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 09:14:13] [INFO] [GUI] GUI ready
+[2026-07-02 09:14:34] [INFO] [GUI] Loading data...
+[2026-07-02 09:14:34] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 09:14:34] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
+[2026-07-02 09:14:34] [INFO] [GUI] Data loaded
+[2026-07-02 09:14:34] [INFO] [StateManager] State: DataLoaded -> DataLoaded
+[2026-07-02 09:14:34] [INFO] [GUI] Data loaded successfully
+[2026-07-02 09:14:37] [ERROR] [GUI] Fitting failed: No data has been loaded. Please load data before fitting.
+[2026-07-02 09:14:37] [INFO] [StateManager] State: Error -> Error
+[2026-07-02 09:21:06] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 09:21:06] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 09:21:06] [INFO] [GUI] GUI ready
+[2026-07-02 09:21:12] [INFO] [GUI] Model changed to: Shirinskaya (PNP + RC)
+[2026-07-02 09:21:12] [INFO] [StateManager] State: DataLoaded -> DataLoaded
+[2026-07-02 09:21:29] [INFO] [GUI] Loading data...
+[2026-07-02 09:21:29] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 09:21:30] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
+[2026-07-02 09:21:30] [INFO] [GUI] Data loaded
+[2026-07-02 09:21:30] [WARN] [StateManager] Transition DataLoaded -> DataLoaded not allowed
+[2026-07-02 09:21:30] [INFO] [GUI] Data loaded successfully
+[2026-07-02 09:21:31] [ERROR] [GUI] Fitting failed: No data has been loaded. Please load data before fitting.
+[2026-07-02 09:21:31] [INFO] [StateManager] State: Error -> Error
+[2026-07-02 09:32:21] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 09:32:22] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 09:32:22] [INFO] [GUI] GUI ready
+[2026-07-02 09:32:44] [INFO] [GUI] Loading data...
+[2026-07-02 09:32:44] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 09:32:44] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
+[2026-07-02 09:32:44] [INFO] [GUI] Data loaded
+[2026-07-02 09:32:44] [INFO] [StateManager] State: DataLoaded -> DataLoaded
+[2026-07-02 09:32:44] [INFO] [GUI] Data loaded successfully
+[2026-07-02 09:32:54] [ERROR] [GUI] Fitting failed: Unrecognized field name "parsed".
+[2026-07-02 09:32:54] [INFO] [StateManager] State: Error -> Error
+[2026-07-02 10:06:01] [INFO] [GUI] OECT Modeling Suite v2.0 starting...
+[2026-07-02 10:06:02] [INFO] [GUI] GUI initialized successfully
+[2026-07-02 10:06:02] [INFO] [GUI] GUI ready
+[2026-07-02 10:06:22] [INFO] [GUI] Loading data...
+[2026-07-02 10:06:22] [INFO] [DataLoader] Loading steady-state: C:[2026-07-02 10:06:23] [WARN] [GUI] Data parsing issue, falling back to default sheet list: Index in position 1 exceeds array bounds.
+[2026-07-02 10:06:23] [INFO] [GUI] Data loaded
+[2026-07-02 10:06:23] [INFO] [GUI] Data loaded successfully

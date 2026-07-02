@@ -3,8 +3,8 @@ classdef StateManager < handle
     
     properties (Access = private)
         currentState char = 'Idle'
-        allowedTransitions struct = struct()
-        callbacks struct = struct()
+        allowedTransitions struct
+        callbacks struct
         logger OECT.Logger
     end
     
@@ -15,6 +15,7 @@ classdef StateManager < handle
     methods
         function obj = StateManager()
             obj.logger = OECT.Logger('StateManager');
+            obj.callbacks = struct(); % FIX: ensure initialized
             obj.setupTransitions();
         end
         
@@ -37,17 +38,18 @@ classdef StateManager < handle
             end
             
             % Check if transition is allowed
-            allowed = obj.allowedTransitions.(obj.currentState);
+            oldState = obj.currentState;
+            allowed = obj.allowedTransitions.(oldState);
             if ~ismember(newState, allowed)
-                obj.logger.warn('Transition %s -> %s not allowed', obj.currentState, newState);
+                obj.logger.warn('Transition %s -> %s not allowed', oldState, newState);
                 success = false;
                 return;
             end
             
             % Execute transition callbacks
-            if obj.executeCallbacks(obj.currentState, newState)
+            if obj.executeCallbacks(oldState, newState)
                 obj.currentState = newState;
-                obj.logger.info('State: %s -> %s', obj.currentState, newState);
+                obj.logger.info('State: %s -> %s', oldState, newState); % FIX: correct log
                 success = true;
             else
                 success = false;
