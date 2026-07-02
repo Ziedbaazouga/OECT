@@ -117,7 +117,7 @@ classdef BisquertModel < OECT.Model
         end
         
         function result = fitSingleFile(obj, data, idx)
-            parsed = data.transient.parsed{idx};
+            parsed = obj.getTransientRecord(data, idx);
             
             Vgs = parsed.filename_Vgs;
             if isnan(Vgs)
@@ -356,6 +356,29 @@ classdef BisquertModel < OECT.Model
             metrics.NRMSE = metrics.RMSE / (max(y_true) - min(y_true) + eps);
             metrics.R2 = 1 - sum(res.^2) / (sum((y_true - mean(y_true)).^2) + eps);
         end
+        function parsed = getTransientRecord(obj, data, idx)
+    tr = data.transient;
+
+    if isfield(tr, 'parsed') && ~isempty(tr.parsed)
+        parsed = tr.parsed{idx};
+        return;
+    end
+    if isfield(tr, 'data') && ~isempty(tr.data)
+        parsed = tr.data{idx};
+        return;
+    end
+    if isfield(tr, 'files') && ~isempty(tr.files)
+        parsed = tr.files{idx};
+        return;
+    end
+    if iscell(tr)
+        parsed = tr{idx};
+        return;
+    end
+
+    error('OECT:TransientFormat', ...
+        'Transient data format unsupported: expected transient.parsed/data/files cell array');
+end
         
         function fitResults = aggregateFits(obj, allResults)
             % FIX: allResults is a cell array
