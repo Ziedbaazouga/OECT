@@ -73,9 +73,19 @@ classdef Parameters < handle
                     obj.params.holes_mobility = 2e-4;
                     
                 case 'Impedance'
-                    obj.params.Z_real = 1000;
-                    obj.params.Z_imag = -500;
-                    obj.params.f = 0.5;
+                    % EIS circuit parameters
+                    % Z = r + {[R2||(1/jwC2)] + [(1-j)*A/sqrt(w)] +
+                    %          [R1||(1/jwC1)] + R3 + r} || [R0+jwL0+r] + Rload
+                    obj.params.R0    = 1e3;    % Ohm   – channel/inductive arm resistance
+                    obj.params.L0    = 1e-6;   % H     – parasitic inductance
+                    obj.params.C1    = 1e-6;   % F     – double-layer capacitance
+                    obj.params.R1    = 500;    % Ohm   – first RC pair resistance
+                    obj.params.C2    = 1e-7;   % F     – bulk ionic capacitance
+                    obj.params.R2    = 2e3;    % Ohm   – second RC pair resistance
+                    obj.params.A     = 1e4;    % Ohm.s^-0.5 – Warburg coefficient
+                    obj.params.r     = 100;    % Ohm   – series parasitic resistance
+                    obj.params.R3    = 50;     % Ohm   – additional series resistance
+                    obj.params.Rload = 500;    % Ohm   – fixed load (not fitted)
                     
                 otherwise
                     error('Unknown model type: %s', obj.modelType);
@@ -140,6 +150,18 @@ classdef Parameters < handle
                     obj.validateParam('Cd', 1e-12, 1);
                     obj.validateParam('f', 0, 1);
                     obj.validateParam('holes_mobility', 1e-6, 1);
+
+                case 'Impedance'
+                    obj.validateParam('R0',    1e-3, 1e6);
+                    obj.validateParam('L0',    1e-12, 1e-1);
+                    obj.validateParam('C1',    1e-12, 1e-1);
+                    obj.validateParam('R1',    1e-3, 1e6);
+                    obj.validateParam('C2',    1e-12, 1e-1);
+                    obj.validateParam('R2',    1e-3, 1e6);
+                    obj.validateParam('A',     1e-6, 1e8);
+                    obj.validateParam('r',     1e-3, 1e5);
+                    obj.validateParam('R3',    0, 1e6);
+                    obj.validateParam('Rload', 0, 1e6);
             end
             
             % Validate geometry
