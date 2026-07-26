@@ -638,6 +638,7 @@ classdef OECT_GUI < matlab.apps.AppBase
                     app.eisFitResults = eisModel.fit(app.eisData, fitOpts);
                     fitResults = app.eisFitResults;
                     app.parameters = fitResults.parameters;
+                    app.model = eisModel;
 
                     % Plot fit results in standalone figures (not embedded in the GUI)
                     eisModel.plotNyquist(app.getResultAxes('Nyquist'), app.eisData, fitResults);
@@ -645,10 +646,21 @@ classdef OECT_GUI < matlab.apps.AppBase
                         app.eisData, fitResults);
                     eisModel.plotResiduals(app.getResultAxes('Residuals'), app.eisData, fitResults);
                 else
-                    % ---- Existing model fitting (placeholder) ----
-                    app.FitProgress.Text = '30%'; drawnow; pause(0.2);
-                    app.FitProgress.Text = '70%'; drawnow; pause(0.2);
-                    fitResults.avgR2 = 0.9845;
+                    % ---- Bisquert / Shirinskaya fitting (real model fit) ----
+                    if isempty(app.dataLoader) || isstruct(app.dataLoader) || ~app.dataLoader.isLoaded
+                        error('Please load steady-state and transient data first');
+                    end
+
+                    if strcmp(modelType, 'Bisquert')
+                        transientModel = OECT.BisquertModel(app.parameters);
+                    else
+                        transientModel = OECT.ShirinskayaModel(app.parameters);
+                    end
+
+                    app.FitProgress.Text = '10%'; drawnow;
+                    fitResults = transientModel.fit(app.dataLoader);
+                    app.parameters = transientModel.getParameters();
+                    app.model = transientModel;
                 end
 
                 app.updateParameterTable();
@@ -875,6 +887,11 @@ classdef OECT_GUI < matlab.apps.AppBase
                 return;
             end
             
+            if isempty(app.model)
+                app.StatusBar.Text = 'Please fit parameters first';
+                return;
+            end
+            
             app.isTesting = true;
             app.RunTestsBtn.Enable = 'off';
             app.CancelTestsBtn.Enable = 'on';
@@ -882,13 +899,11 @@ classdef OECT_GUI < matlab.apps.AppBase
             drawnow;
             
             try
-                mockResults = cell(1, length(selectedTests));
-                for idx = 1:length(selectedTests)
-                    mockResults{idx} = struct('testType', selectedTests{idx}, ...
-                        'getData', @(type) app.generateMockTestData(selectedTests{idx}, type));
-                end
-                
-                app.testResults = mockResults;
+                % Run the selected tests against whichever model was fitted
+                % (Bisquert, Shirinskaya or Impedance) so results always
+                % reflect the currently selected model, not just Impedance.
+                testSuite = OECT.TestSuite(app.model);
+                app.testResults = testSuite.runSelected(selectedTests);
                 app.plotResults(app.testResults);
                 app.StatusBar.Text = sprintf('✓ %d tests complete', length(app.testResults));
                 
@@ -924,43 +939,10 @@ classdef OECT_GUI < matlab.apps.AppBase
             end
         end
 
-        function out = generateMockTestData(~, testName, dataType)
-            switch testName
-                case 'Transfer'
-                    if strcmp(dataType, 'Vgs'), out = -0.4:0.05:0.6;
-                    elseif strcmp(dataType, 'Id')
-                        ctrlPts = [0.1, 0.2; 0.3, 0.5; 0.8, 1.2];
-                        out = interp1(linspace(0, 1, size(ctrlPts, 1)), ctrlPts, ...
-                            linspace(0, 1, 21));
-                    else, out = [-0.1, -0.5]; end
-                case 'Output'
-                    if strcmp(dataType, 'Vds'), out = -0.6:0.05:0.0;
-                    elseif strcmp(dataType, 'Id')
-                        ctrlPts = [-0.2, -0.4; -0.6, -0.9];
-                        out = interp1(linspace(0, 1, size(ctrlPts, 1)), ctrlPts, ...
-                            linspace(0, 1, 13));
-                    else, out = [0.0, 0.4]; end
-                case 'Hysteresis'
-                    if strcmp(dataType, 'Vg_forward'), out = -0.2:0.05:0.6;
-                    elseif strcmp(dataType, 'Id_forward'), out = (0.1:0.05:0.9).^2;
-                    elseif strcmp(dataType, 'Vg_reverse'), out = 0.6:-0.05:-0.2;
-                    elseif strcmp(dataType, 'Id_reverse'), out = (0.6:-0.05:-0.2).^2 + 0.05;
-                    else, out = -0.1; end
-                case 'PPX'
-                    if strcmp(dataType, 'Intervals'), out = [10, 20, 50, 100, 200, 500];
-                    elseif strcmp(dataType, 'PPF_Ratio'), out = 1.8 * exp(-[10, 20, 50, 100, 200, 500]/120) + 1.0;
-                    else, out = []; end
-                otherwise
-                    if strcmp(dataType, 'Time'), out = 0:0.001:0.5;
-                    elseif strcmp(dataType, 'Current'), out = 0.5 * sin(2*pi*10*(0:0.001:0.5)) + 1.0;
-                    else, out = []; end
-            end
-        end
-
         function plotResults(app, results)
             for i = 1:length(results)
                 r = results{i};
-                if ~isstruct(r), continue; end
+                if isempty(r), continue; end
                 switch r.testType
                     case 'Transfer', app.plotTransfer(r);
                     case 'Output', app.plotOutput(r);
@@ -1015,21 +997,37 @@ classdef OECT_GUI < matlab.apps.AppBase
         function plotPPX(app, result)
             ax = app.getResultAxes('PPX');
             hold(ax, 'on');
-            intervals = result.getData('Intervals');
-            ratio = result.getData('PPF_Ratio');
-            stem(ax, intervals, ratio, 'Filled', 'LineWidth', 2, 'Color', [0.4, 0.8, 0.4]);
-            plot(ax, intervals, ratio, '--', 'LineWidth', 1.5, 'Color', [0.8, 0.8, 0.8]);
-            xlabel(ax, 'Pulse Interval \Delta t (ms)'); ylabel(ax, 'PPF Ratio (A_2 / A_1)'); title(ax, 'Paired-Pulse Facilitation');
+            dt_tau = result.getData('dt_tau');
+            ppx = result.getData('PPX');
+            stem(ax, dt_tau, ppx, 'Filled', 'LineWidth', 2, 'Color', [0.4, 0.8, 0.4]);
+            plot(ax, dt_tau, ppx, '--', 'LineWidth', 1.5, 'Color', [0.8, 0.8, 0.8]);
+            xlabel(ax, '\Delta t / \tau'); ylabel(ax, 'PPF Ratio (A_2 / A_1)'); title(ax, 'Paired-Pulse Facilitation');
             grid(ax, 'on'); hold(ax, 'off');
         end
 
         function plotPulseTrain(app, result)
             ax = app.getResultAxes(result.testType);
             hold(ax, 'on');
-            t = result.getData('Time');
-            Id_t = result.getData('Current');
-            plot(ax, t * 1e3, Id_t * 1e3, 'LineWidth', 2, 'Color', [0.9, 0.6, 0.1]);
-            xlabel(ax, 'Time (ms)'); ylabel(ax, 'Transient I_d (mA)'); title(ax, sprintf('%s Response', result.testType));
+            peaks = result.getData('peaks');
+            if ~isempty(peaks)
+                % Vg/Vd train amplitude/interval sweeps: peak current per pulse
+                labels = result.getData('labels');
+                n_pulses = result.getData('n_pulses');
+                colors = lines(length(peaks));
+                for k = 1:length(peaks)
+                    plot(ax, 1:n_pulses, peaks{k} * 1e3, '-o', 'LineWidth', 1.5, ...
+                        'Color', colors(k,:), 'DisplayName', labels{k});
+                end
+                xlabel(ax, 'Pulse Index'); ylabel(ax, 'Peak I_d (mA)');
+                legend(ax, 'Location', 'best', 'TextColor', [1,1,1]);
+            else
+                % Step / Vds Pulse: raw transient response
+                t = result.getData('t');
+                Id_t = result.getData('Id');
+                plot(ax, t * 1e3, Id_t * 1e3, 'LineWidth', 2, 'Color', [0.9, 0.6, 0.1]);
+                xlabel(ax, 'Time (ms)'); ylabel(ax, 'Transient I_d (mA)');
+            end
+            title(ax, sprintf('%s Response', result.testType));
             grid(ax, 'on'); hold(ax, 'off');
         end
 

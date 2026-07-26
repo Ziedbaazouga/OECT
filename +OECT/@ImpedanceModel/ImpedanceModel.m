@@ -409,7 +409,31 @@ classdef ImpedanceModel < OECT.Model
                     @(p) sum(objective(p).^2), ...
                     x0, [], [], [], [], lb, ub, [], fminOpts);
 
+                % Polish the fmincon solution with lsqnonlin, which is
+                % specifically designed for nonlinear least-squares problems
+                % (like this complex-impedance residual) and often escapes
+                % the shallow local optima that a generic constrained
+                % optimizer such as fmincon settles into.
                 if exitflag >= 0
+                    try
+                        lsqOpts = optimoptions('lsqnonlin', ...
+                            'Display',              'off', ...
+                            'Algorithm',            'trust-region-reflective', ...
+                            'MaxIterations',        opts.maxIter, ...
+                            'MaxFunctionEvaluations', opts.maxIter * 20, ...
+                            'FunctionTolerance',    opts.tol, ...
+                            'StepTolerance',        opts.tol * 1e-3);
+
+                        [p_polished, res_polished] = lsqnonlin( ...
+                            objective, p_opt, lb, ub, lsqOpts);
+
+                        if sum(res_polished.^2) < sum(objective(p_opt).^2)
+                            p_opt = p_polished;
+                        end
+                    catch
+                        % lsqnonlin unavailable/failed – keep fmincon result
+                    end
+
                     Z_fit = OECT.ImpedanceModel.circuitImpedance(w_vec, p_opt, Rload);
                     res   = Z_meas - Z_fit;
                     ss_res = sum(abs(res).^2);
