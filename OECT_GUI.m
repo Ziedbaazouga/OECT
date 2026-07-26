@@ -67,50 +67,14 @@ classdef OECT_GUI < matlab.apps.AppBase
         RightPanel                      matlab.ui.container.Panel
         RightGrid                       matlab.ui.container.GridLayout
         
-        % Tests
+        % Tests (parameter input fields for each test are created dynamically
+        % and stored in the TestParamEdits map; see initializeTestCheckboxes)
         TestsPanel                      matlab.ui.container.Panel
         TestsGrid                       matlab.ui.container.GridLayout
         TestCheckBoxes                  matlab.ui.control.CheckBox
-        
-        % Test Parameters
-        TestParamsPanel                 matlab.ui.container.Panel
-        TestParamsGrid                  matlab.ui.container.GridLayout
-        VdsFixedLabel                   matlab.ui.control.Label
-        VdsFixedEdit                    matlab.ui.control.NumericEditField
-        TMaxLabel                       matlab.ui.control.Label
-        TMaxEdit                        matlab.ui.control.NumericEditField
-        NPulsesLabel                    matlab.ui.control.Label
-        NPulsesEdit                     matlab.ui.control.NumericEditField
-        PulseWidthLabel                 matlab.ui.control.Label
-        PulseWidthEdit                  matlab.ui.control.NumericEditField
-        GapLabel                        matlab.ui.control.Label
-        GapEdit                         matlab.ui.control.NumericEditField
         SaveDataCheck                   matlab.ui.control.CheckBox
         RunTestsBtn                     matlab.ui.control.Button
         CancelTestsBtn                  matlab.ui.control.Button
-        
-        % Results
-        ResultsPanel                    matlab.ui.container.Panel
-        ResultsGrid                     matlab.ui.container.GridLayout
-        ResultsTabGroup                 matlab.ui.container.TabGroup
-        TransferTab                     matlab.ui.container.Tab
-        TransferAxes                    matlab.ui.control.UIAxes
-        OutputTab                       matlab.ui.container.Tab
-        OutputAxes                      matlab.ui.control.UIAxes
-        HysteresisTab                   matlab.ui.container.Tab
-        HysteresisAxes                  matlab.ui.control.UIAxes
-        PPXTab                          matlab.ui.container.Tab
-        PPXAxes                         matlab.ui.control.UIAxes
-        PulseTrainTab                   matlab.ui.container.Tab
-        PulseTrainAxes                  matlab.ui.control.UIAxes
-        % EIS-specific result tabs
-        NyquistTab                      matlab.ui.container.Tab
-        NyquistAxes                     matlab.ui.control.UIAxes
-        BodeTab                         matlab.ui.container.Tab
-        BodeMagAxes                     matlab.ui.control.UIAxes
-        BodePhaseAxes                   matlab.ui.control.UIAxes
-        ResidualsTab                    matlab.ui.container.Tab
-        ResidualsAxes                   matlab.ui.control.UIAxes
         
         % Export
         ExportPanel                     matlab.ui.container.Panel
@@ -145,11 +109,21 @@ classdef OECT_GUI < matlab.apps.AppBase
         eisData struct       % loaded EIS data
         eisFitResults struct % last EIS fit results
         cancelFitFlag logical = false
+        % Test parameters: containers.Map, test name -> struct with fields
+        % 'names' (cell of labels) and 'edits' (array of edit field handles),
+        % populated per-test directly next to each test checkbox.
+        TestParamEdits
+        % Handles to the standalone (non-GUI) figures/axes used for plotting
+        % test and EIS results, keyed by plot name, so Export Plots can
+        % still find and export the most recently created figures.
+        resultAxes
     end
 
     methods (Access = private)
 
         function setupApp(app)
+            app.TestParamEdits = containers.Map();
+            app.resultAxes = containers.Map();
             try
                 app.logger = OECT.Logger('GUI');
             catch
@@ -178,6 +152,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.populateDropdowns();
             app.initializeTestCheckboxes();
             app.setupDefaultValues();
+            app.refreshParameters();
             app.updateUIState();
             
             app.logger.info('GUI initialized successfully');
@@ -203,8 +178,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             
             panels = [app.LeftPanel, app.RightPanel, app.ModelPanel, ...
                       app.DataPanel, app.GeometryPanel, app.ParamsPanel, ...
-                      app.FitPanel, app.TestsPanel, app.TestParamsPanel, ...
-                      app.ResultsPanel, app.ExportPanel];
+                      app.FitPanel, app.TestsPanel, app.ExportPanel];
             for p = panels
                 p.BackgroundColor = [0.18, 0.18, 0.18];
                 p.ForegroundColor = [1, 1, 1];
@@ -244,18 +218,6 @@ classdef OECT_GUI < matlab.apps.AppBase
             
             app.StatusBar.BackgroundColor = [0.15, 0.15, 0.15];
             app.StatusBar.FontColor = [0.8, 0.8, 0.8];
-            
-            axesList = [app.TransferAxes, app.OutputAxes, app.HysteresisAxes, app.PPXAxes, app.PulseTrainAxes, ...
-                        app.NyquistAxes, app.BodeMagAxes, app.BodePhaseAxes, app.ResidualsAxes];
-            for ax = axesList
-                if ~isempty(ax)
-                    ax.BackgroundColor = [0.15, 0.15, 0.15];
-                    ax.XColor = [0.9, 0.9, 0.9];
-                    ax.YColor = [0.9, 0.9, 0.9];
-                    ax.GridColor = [0.4, 0.4, 0.4];
-                    ax.MinorGridColor = [0.3, 0.3, 0.3];
-                end
-            end
         end
 
         function populateDropdowns(app)
@@ -266,29 +228,81 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function initializeTestCheckboxes(app)
-            tests = {'Step', 'Transfer', 'Output', 'Hysteresis', ...
-                     'PPX', 'Vg Train (Amp)', 'Vg Train (Interval)', ...
-                     'Vd Train (Amp)', 'Vd Train (Interval)', 'Vds Pulse'};
-            
-            children = app.TestsGrid.Children;
-            for i = 1:length(children)
-                if isa(children(i), 'matlab.ui.control.CheckBox')
-                    delete(children(i));
-                end
-            end
-            
-            checkboxes = cell(1, length(tests));
-            for i = 1:length(tests)
+            % TESTSPEC  Each test gets its own directly-adjacent parameter
+            % edit field(s) instead of a shared "Test Parameters" panel.
+            % Format: {testName, {label1, default1}, {label2, default2}, ...}
+            testSpec = {
+                {'Step',                {'Vds',  -0.1}}, ...
+                {'Transfer',            {'Vds',  -0.1}}, ...
+                {'Output',              {'Vgs',  -0.1}}, ...
+                {'Hysteresis',          {'Vds',  -0.1}}, ...
+                {'PPX',                 {'PW',    2},   {'Gap',  1}}, ...
+                {'Vg Train (Amp)',      {'Amp',  -0.1}}, ...
+                {'Vg Train (Interval)', {'Gap',   1}}, ...
+                {'Vd Train (Amp)',      {'Amp',  -0.1}}, ...
+                {'Vd Train (Interval)', {'Gap',   1}}, ...
+                {'Vds Pulse',           {'PW',    2},   {'N',   30}}, ...
+                };
+
+            delete(app.TestsGrid.Children);
+
+            nTests = length(testSpec);
+            app.TestsGrid.RowHeight = repmat({25}, 1, nTests + 1);
+            app.TestsGrid.ColumnWidth = {'1.3x', 35, '0.8x', 35, '0.8x'};
+
+            checkboxes = cell(1, nTests);
+            app.TestParamEdits = containers.Map();
+            for i = 1:nTests
+                spec = testSpec{i};
+                testName = spec{1};
+
                 checkbox = uicheckbox(app.TestsGrid, ...
-                    'Text', tests{i}, ...
+                    'Text', testName, ...
                     'Value', true, ...
                     'FontColor', [1, 1, 1], ...
                     'FontSize', 11);
+                checkbox.Layout.Row = i;
+                checkbox.Layout.Column = 1;
                 checkboxes{i} = checkbox;
+
+                names = {};
+                edits = matlab.ui.control.NumericEditField.empty;
+                for p = 2:length(spec)
+                    label = spec{p}{1};
+                    default = spec{p}{2};
+                    col = 2 + 2 * (p - 2);
+
+                    lbl = uilabel(app.TestsGrid, 'Text', [label ':'], 'FontColor', [1, 1, 1]);
+                    lbl.Layout.Row = i; lbl.Layout.Column = col;
+
+                    edit = uieditfield(app.TestsGrid, 'numeric', 'Value', default, ...
+                        'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
+                    edit.Layout.Row = i; edit.Layout.Column = col + 1;
+
+                    names{end+1} = label; %#ok<AGROW>
+                    edits(end+1) = edit; %#ok<AGROW>
+                end
+                app.TestParamEdits(testName) = struct('names', {names}, 'edits', edits);
             end
-            
             app.TestCheckBoxes = [checkboxes{:}];
-            app.TestsGrid.RowHeight = repmat({25}, 1, length(tests));
+
+            % Controls row: Save Data / Run / Cancel, directly below the tests
+            app.SaveDataCheck = uicheckbox(app.TestsGrid, 'Text', 'Save Data', ...
+                'Value', false, 'FontColor', [1, 1, 1]);
+            app.SaveDataCheck.Layout.Row = nTests + 1;
+            app.SaveDataCheck.Layout.Column = 1;
+
+            app.RunTestsBtn = uibutton(app.TestsGrid, 'Text', 'Run Tests', ...
+                'BackgroundColor', [0, 0.6, 0.2], 'FontColor', [1, 1, 1], 'FontWeight', 'bold', ...
+                'ButtonPushedFcn', @(src, evt) app.RunTestsBtnPushed());
+            app.RunTestsBtn.Layout.Row = nTests + 1;
+            app.RunTestsBtn.Layout.Column = [2 3];
+
+            app.CancelTestsBtn = uibutton(app.TestsGrid, 'Text', 'Cancel', ...
+                'BackgroundColor', [0.6, 0.1, 0.1], 'FontColor', [1, 1, 1], 'Enable', 'off', ...
+                'ButtonPushedFcn', @(src, evt) app.CancelTestsBtnPushed());
+            app.CancelTestsBtn.Layout.Row = nTests + 1;
+            app.CancelTestsBtn.Layout.Column = [4 5];
         end
 
         function setupDefaultValues(app)
@@ -297,11 +311,6 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.WEdit.Value = 10e-6;
             app.TEdit.Value = 290;
             
-            app.VdsFixedEdit.Value = -0.1;
-            app.TMaxEdit.Value = 0.05;
-            app.NPulsesEdit.Value = 30;
-            app.PulseWidthEdit.Value = 2;
-            app.GapEdit.Value = 1;
             app.SaveDataCheck.Value = false;
             
             app.R2Edit.Value = 0.5;
@@ -423,11 +432,17 @@ classdef OECT_GUI < matlab.apps.AppBase
                             app.TestCheckBoxes(i).Enable = app.bool2onoff(enabled);
                         end
                     end
-                    app.VdsFixedEdit.Enable = app.bool2onoff(enabled);
-                    app.TMaxEdit.Enable = app.bool2onoff(enabled);
-                    app.NPulsesEdit.Enable = app.bool2onoff(enabled);
-                    app.PulseWidthEdit.Enable = app.bool2onoff(enabled);
-                    app.GapEdit.Enable = app.bool2onoff(enabled);
+                    if ~isempty(app.TestParamEdits)
+                        testNames = keys(app.TestParamEdits);
+                        for i = 1:length(testNames)
+                            rowEdits = app.TestParamEdits(testNames{i}).edits;
+                            for j = 1:length(rowEdits)
+                                if isvalid(rowEdits(j))
+                                    rowEdits(j).Enable = app.bool2onoff(enabled);
+                                end
+                            end
+                        end
+                    end
                     app.SaveDataCheck.Enable = app.bool2onoff(enabled);
                     app.RunTestsBtn.Enable = app.bool2onoff(enabled);
                     
@@ -447,6 +462,7 @@ classdef OECT_GUI < matlab.apps.AppBase
         function onDataLoaded(app)
             app.isLoaded = true;
             app.DataStatusLabel.Text = '✓ Data loaded successfully';
+            app.refreshParameters();
             app.logger.info('Data loaded');
         end
 
@@ -553,12 +569,17 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function browseSteadyStateFile(app)
-            [file, path] = uigetfile({'*.xlsx;*.csv;*.mat', 'Supported Files'}, 'Select Steady-State Data File');
+            if strcmp(app.getModelType(), 'Impedance')
+                dialogTitle = 'Select EIS Impedance Data File';
+            else
+                dialogTitle = 'Select Steady-State Data File';
+            end
+            [file, path] = uigetfile({'*.xlsx;*.xls;*.csv;*.mat', 'Supported Files'}, dialogTitle);
             if file ~= 0, app.SteadyStateEdit.Value = fullfile(path, file); end
         end
 
         function browseTransientFiles(app)
-            [files, path] = uigetfile({'*.xlsx;*.csv;*.mat', 'Supported Files'}, 'Select Transient Data Files', 'MultiSelect', 'on');
+            [files, path] = uigetfile({'*.xlsx;*.xls;*.csv;*.mat', 'Supported Files'}, 'Select Transient Data Files', 'MultiSelect', 'on');
             if iscell(files)
                 fullPaths = cellfun(@(f) fullfile(path, f), files, 'UniformOutput', false);
                 app.TransientEdit.Value = strjoin(fullPaths, '; ');
@@ -580,17 +601,7 @@ classdef OECT_GUI < matlab.apps.AppBase
 
             try
                 modelType = app.getModelType();
-                geometry.d = app.dEdit.Value;
-                geometry.L = app.LEdit.Value;
-                geometry.W = app.WEdit.Value;
-                geometry.T = app.TEdit.Value;
-
-                try
-                    app.parameters = OECT.Parameters(modelType);
-                    app.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
-                catch
-                    app.parameters = struct('geometry', geometry, 'params', struct());
-                end
+                app.refreshParameters();
 
                 if strcmp(modelType, 'Impedance')
                     % ---- EIS multi-start fitting ----
@@ -613,23 +624,11 @@ classdef OECT_GUI < matlab.apps.AppBase
                     fitResults = app.eisFitResults;
                     app.parameters = fitResults.parameters;
 
-                    % Update plots
-                    if ~isempty(app.NyquistAxes) && isvalid(app.NyquistAxes)
-                        eisModel.plotNyquist(app.NyquistAxes, app.eisData, fitResults);
-                    end
-                    if ~isempty(app.BodeMagAxes) && isvalid(app.BodeMagAxes) && ...
-                            ~isempty(app.BodePhaseAxes) && isvalid(app.BodePhaseAxes)
-                        eisModel.plotBode(app.BodeMagAxes, app.BodePhaseAxes, ...
-                            app.eisData, fitResults);
-                    end
-                    if ~isempty(app.ResidualsAxes) && isvalid(app.ResidualsAxes)
-                        eisModel.plotResiduals(app.ResidualsAxes, app.eisData, fitResults);
-                    end
-
-                    % Switch to Nyquist tab
-                    if ~isempty(app.NyquistTab) && isvalid(app.NyquistTab)
-                        app.ResultsTabGroup.SelectedTab = app.NyquistTab;
-                    end
+                    % Plot fit results in standalone figures (not embedded in the GUI)
+                    eisModel.plotNyquist(app.getResultAxes('Nyquist'), app.eisData, fitResults);
+                    eisModel.plotBode(app.getResultAxes('BodeMag'), app.getResultAxes('BodePhase'), ...
+                        app.eisData, fitResults);
+                    eisModel.plotResiduals(app.getResultAxes('Residuals'), app.eisData, fitResults);
                 else
                     % ---- Existing model fitting (placeholder) ----
                     app.FitProgress.Text = '30%'; drawnow; pause(0.2);
@@ -693,11 +692,37 @@ classdef OECT_GUI < matlab.apps.AppBase
             end
         end
 
+        function ax = getResultAxes(app, name)
+            %GETRESULTAXES  Return (creating if needed) a dark-themed axes on
+            %   a standalone MATLAB figure for the named plot. Plots are not
+            %   embedded in the GUI; each one opens in its own figure window,
+            %   and the handle is kept so Export Plots can find it again.
+            if isempty(app.resultAxes)
+                app.resultAxes = containers.Map();
+            end
+            if isKey(app.resultAxes, name) && isvalid(app.resultAxes(name))
+                ax = app.resultAxes(name);
+                cla(ax);
+                figure(ancestor(ax, 'figure'));
+                return;
+            end
+            fig = figure('Name', name, 'Color', [0.12, 0.12, 0.12], 'NumberTitle', 'off');
+            ax = axes(fig);
+            ax.Color = [0.15, 0.15, 0.15];
+            ax.XColor = [0.9, 0.9, 0.9];
+            ax.YColor = [0.9, 0.9, 0.9];
+            ax.GridColor = [0.4, 0.4, 0.4];
+            ax.FontSize = 11;
+            app.resultAxes(name) = ax;
+        end
+
         function updateDataPanelForModel(app)
             %UPDATEDATAPANELFORMODEL  Adapt Data Loading labels for the selected model.
             modelType = app.getModelType();
             if strcmp(modelType, 'Impedance')
                 app.SteadyStateLabel.Text = 'File:';
+                app.SteadyStateEdit.Tooltip = ['Select an .xlsx/.xls file with Frequency, ' ...
+                    'Magnitude and Phase sheets (see measurements/Impedance/README.md)'];
                 app.TransientLabel.Text   = '(unused)';
                 app.TransientEdit.Enable  = 'off';
                 app.TransientBrowseBtn.Enable = 'off';
@@ -707,6 +732,7 @@ classdef OECT_GUI < matlab.apps.AppBase
                 end
             else
                 app.SteadyStateLabel.Text = 'Steady:';
+                app.SteadyStateEdit.Tooltip = '';
                 app.TransientLabel.Text   = 'Transient:';
                 app.TransientEdit.Enable  = 'on';
                 app.TransientBrowseBtn.Enable = 'on';
@@ -718,47 +744,61 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function plotEISPreview(app)
-            %PLOTEISPREVIEW  Show experimental Nyquist plot after loading EIS data.
+            %PLOTEISPREVIEW  Show experimental Nyquist/Bode plots after loading
+            %   EIS data, each in its own standalone figure window.
             if isempty(app.eisData) || ~isfield(app.eisData, 'Z_real'), return; end
             try
-                if ~isempty(app.NyquistAxes) && isvalid(app.NyquistAxes)
-                    ax = app.NyquistAxes;
-                    cla(ax);
-                    plot(ax, app.eisData.Z_real, -app.eisData.Z_imag, 'o', ...
-                        'MarkerSize', 4, 'Color', [0.3 0.6 1]);
-                    xlabel(ax, 'Z_{real} (\Omega)');
-                    ylabel(ax, '-Z_{imag} (\Omega)');
-                    title(ax, 'Nyquist – Experimental');
-                    grid(ax, 'on'); axis(ax, 'equal');
-                    if ~isempty(app.NyquistTab) && isvalid(app.NyquistTab)
-                        app.ResultsTabGroup.SelectedTab = app.NyquistTab;
-                    end
-                end
-                if ~isempty(app.BodeMagAxes) && isvalid(app.BodeMagAxes)
-                    axM = app.BodeMagAxes;
-                    cla(axM);
-                    freq = app.eisData.frequency;
-                    Z_m  = app.eisData.Z_real + 1i * app.eisData.Z_imag;
-                    semilogx(axM, freq, 20*log10(abs(Z_m)), 'o', ...
-                        'MarkerSize', 4, 'Color', [0.3 0.6 1]);
-                    ylabel(axM, '|Z| (dB\Omega)');
-                    title(axM, 'Bode – Magnitude');
-                    grid(axM, 'on');
-                end
-                if ~isempty(app.BodePhaseAxes) && isvalid(app.BodePhaseAxes)
-                    axP = app.BodePhaseAxes;
-                    cla(axP);
-                    freq = app.eisData.frequency;
-                    Z_m  = app.eisData.Z_real + 1i * app.eisData.Z_imag;
-                    semilogx(axP, freq, angle(Z_m)*180/pi, 'o', ...
-                        'MarkerSize', 4, 'Color', [0.3 0.6 1]);
-                    ylabel(axP, 'Phase (deg)');
-                    xlabel(axP, 'Frequency (Hz)');
-                    title(axP, 'Bode – Phase');
-                    grid(axP, 'on');
-                end
+                ax = app.getResultAxes('Nyquist');
+                plot(ax, app.eisData.Z_real, -app.eisData.Z_imag, 'o', ...
+                    'MarkerSize', 4, 'Color', [0.3 0.6 1]);
+                xlabel(ax, 'Z_{real} (\Omega)');
+                ylabel(ax, '-Z_{imag} (\Omega)');
+                title(ax, 'Nyquist – Experimental');
+                grid(ax, 'on'); axis(ax, 'equal');
+
+                freq = app.eisData.frequency;
+                Z_m  = app.eisData.Z_real + 1i * app.eisData.Z_imag;
+
+                axM = app.getResultAxes('BodeMag');
+                semilogx(axM, freq, 20*log10(abs(Z_m)), 'o', ...
+                    'MarkerSize', 4, 'Color', [0.3 0.6 1]);
+                ylabel(axM, '|Z| (dB\Omega)');
+                title(axM, 'Bode – Magnitude');
+                grid(axM, 'on');
+
+                axP = app.getResultAxes('BodePhase');
+                semilogx(axP, freq, angle(Z_m)*180/pi, 'o', ...
+                    'MarkerSize', 4, 'Color', [0.3 0.6 1]);
+                ylabel(axP, 'Phase (deg)');
+                xlabel(axP, 'Frequency (Hz)');
+                title(axP, 'Bode – Phase');
+                grid(axP, 'on');
             catch ME
                 app.logger.warn('EIS preview failed: %s', ME.message);
+            end
+        end
+
+        function refreshParameters(app)
+            %REFRESHPARAMETERS  (Re)build app.parameters from the current model
+            %   and geometry selection, and refresh the Parameters table.
+            %   Called as soon as a model is chosen or data is loaded, so the
+            %   panel is populated (not left empty/grey) before fitting.
+            try
+                modelType = app.getModelType();
+                geometry.d = app.dEdit.Value;
+                geometry.L = app.LEdit.Value;
+                geometry.W = app.WEdit.Value;
+                geometry.T = app.TEdit.Value;
+
+                try
+                    app.parameters = OECT.Parameters(modelType);
+                    app.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
+                catch
+                    app.parameters = struct('geometry', geometry, 'params', struct());
+                end
+                app.updateParameterTable();
+            catch ME
+                app.logger.warn('Could not refresh parameters: %s', ME.message);
             end
         end
 
@@ -909,8 +949,8 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function plotTransfer(app, result)
-            ax = app.TransferAxes; if isempty(ax), return; end
-            cla(ax); hold(ax, 'on');
+            ax = app.getResultAxes('Transfer');
+            hold(ax, 'on');
             Vgs = result.getData('Vgs'); Id = result.getData('Id'); Vds = result.getData('Vds');
             colors = lines(length(Vds));
             for j = 1:length(Vds)
@@ -922,8 +962,8 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function plotOutput(app, result)
-            ax = app.OutputAxes; if isempty(ax), return; end
-            cla(ax); hold(ax, 'on');
+            ax = app.getResultAxes('Output');
+            hold(ax, 'on');
             Vds = result.getData('Vds'); Id = result.getData('Id'); Vg = result.getData('Vg');
             colors = lines(length(Vg));
             for j = 1:length(Vg)
@@ -935,8 +975,8 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function plotHysteresis(app, result)
-            ax = app.HysteresisAxes; if isempty(ax), return; end
-            cla(ax); hold(ax, 'on');
+            ax = app.getResultAxes('Hysteresis');
+            hold(ax, 'on');
             Vg_fwd = result.getData('Vg_forward');
             Id_fwd = result.getData('Id_forward');
             Vg_rev = result.getData('Vg_reverse');
@@ -948,8 +988,8 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function plotPPX(app, result)
-            ax = app.PPXAxes; if isempty(ax), return; end
-            cla(ax); hold(ax, 'on');
+            ax = app.getResultAxes('PPX');
+            hold(ax, 'on');
             intervals = result.getData('Intervals');
             ratio = result.getData('PPF_Ratio');
             stem(ax, intervals, ratio, 'Filled', 'LineWidth', 2, 'Color', [0.4, 0.8, 0.4]);
@@ -959,8 +999,8 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function plotPulseTrain(app, result)
-            ax = app.PulseTrainAxes; if isempty(ax), return; end
-            cla(ax); hold(ax, 'on');
+            ax = app.getResultAxes(result.testType);
+            hold(ax, 'on');
             t = result.getData('Time');
             Id_t = result.getData('Current');
             plot(ax, t * 1e3, Id_t * 1e3, 'LineWidth', 2, 'Color', [0.9, 0.6, 0.1]);
@@ -984,22 +1024,15 @@ classdef OECT_GUI < matlab.apps.AppBase
             timestamp = datestr(now, 'yyyy-mm-dd_HH-MM-SS');
             try
                 if ~isfolder('results/exports'), mkdir('results/exports'); end
-                axes = [app.TransferAxes, app.OutputAxes, app.HysteresisAxes, app.PPXAxes, app.PulseTrainAxes];
-                names = {'transfer', 'output', 'hysteresis', 'ppx', 'pulsetrain'};
-                for i = 1:length(axes)
-                    if ~isempty(axes(i)) && ~isempty(axes(i).Children)
-                        filename = sprintf('results/exports/%s_%s.png', names{i}, timestamp);
-                        exportgraphics(axes(i), filename, 'Resolution', 300);
-                    end
-                end
-                % Also export EIS plots if available
-                eisAxes = {app.NyquistAxes, app.BodeMagAxes, app.BodePhaseAxes, app.ResidualsAxes};
-                eisNames = {'nyquist', 'bode_mag', 'bode_phase', 'residuals'};
-                for i = 1:length(eisAxes)
-                    ax = eisAxes{i};
-                    if ~isempty(ax) && isvalid(ax) && ~isempty(ax.Children)
-                        filename = sprintf('results/exports/eis_%s_%s.png', eisNames{i}, timestamp);
-                        exportgraphics(ax, filename, 'Resolution', 300);
+                if ~isempty(app.resultAxes)
+                    names = keys(app.resultAxes);
+                    for i = 1:length(names)
+                        ax = app.resultAxes(names{i});
+                        if isvalid(ax) && ~isempty(ax.Children)
+                            filename = sprintf('results/exports/%s_%s.png', ...
+                                matlab.lang.makeValidName(lower(names{i})), timestamp);
+                            exportgraphics(ax, filename, 'Resolution', 300);
+                        end
                     end
                 end
                 app.StatusBar.Text = '✓ Plots exported to results/exports/';
@@ -1029,7 +1062,12 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function SteadyStateBrowseBtnPushed(app, ~)
-            [file, path] = uigetfile({'*.xls;*.xlsx;*.csv;*.mat', 'Supported Files'}, 'Select Steady-State File');
+            if strcmp(app.getModelType(), 'Impedance')
+                dialogTitle = 'Select EIS Impedance Data File';
+            else
+                dialogTitle = 'Select Steady-State File';
+            end
+            [file, path] = uigetfile({'*.xls;*.xlsx;*.csv;*.mat', 'Supported Files'}, dialogTitle);
             if file ~= 0, app.SteadyStateEdit.Value = fullfile(path, file); end
         end
 
@@ -1062,6 +1100,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             end
             app.updateUIState();
             app.updateDataPanelForModel();
+            app.refreshParameters();
         end
 
         function ParamsTableCellEdit(app, ~)
@@ -1247,137 +1286,25 @@ classdef OECT_GUI < matlab.apps.AppBase
                 'BackgroundColor', [0.15, 0.15, 0.15], ...
                 'ForegroundColor', [1, 1, 1]);
             
-            app.RightGrid = uigridlayout(app.RightPanel, [5, 1], ...
-                'RowHeight', {'fit', 'fit', '1x', 'fit', 30}, ...
+            app.RightGrid = uigridlayout(app.RightPanel, [3, 1], ...
+                'RowHeight', {'1x', 'fit', 30}, ...
                 'BackgroundColor', [0.15, 0.15, 0.15]);
             
-            % Tests Panel
+            % Tests Panel: checkboxes + inline parameter fields per test,
+            % plus a bottom row for Save Data / Run / Cancel controls.
             app.TestsPanel = uipanel(app.RightGrid, ...
                 'Title', 'Test Selection', ...
                 'BackgroundColor', [0.18, 0.18, 0.18], ...
                 'ForegroundColor', [1, 1, 1], ...
                 'FontWeight', 'bold');
             
-            app.TestsGrid = uigridlayout(app.TestsPanel, [10, 1], ...
-                'RowHeight', repmat({25}, 1, 10), ...
+            app.TestsGrid = uigridlayout(app.TestsPanel, [11, 5], ...
+                'RowHeight', repmat({25}, 1, 11), ...
+                'ColumnWidth', {'1.3x', 35, '0.8x', 35, '0.8x'}, ...
                 'Padding', [5, 5, 5, 5], ...
                 'BackgroundColor', [0.18, 0.18, 0.18]);
-            
-            % Test Parameters Panel
-            app.TestParamsPanel = uipanel(app.RightGrid, ...
-                'Title', 'Test Parameters', ...
-                'BackgroundColor', [0.18, 0.18, 0.18], ...
-                'ForegroundColor', [1, 1, 1], ...
-                'FontWeight', 'bold');
-            
-            app.TestParamsGrid = uigridlayout(app.TestParamsPanel, [3, 4], ...
-                'RowHeight', {25, 25, 25}, ...
-                'ColumnWidth', {'1x', '1.5x', '1x', '1.5x'}, ...
-                'Padding', [5, 5, 5, 5], ...
-                'BackgroundColor', [0.18, 0.18, 0.18]);
-            
-            app.VdsFixedLabel = uilabel(app.TestParamsGrid, 'Text', 'Vds:', 'FontColor', [1, 1, 1]);
-            app.VdsFixedEdit = uieditfield(app.TestParamsGrid, 'numeric', 'Value', -0.1, 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
-            app.TMaxLabel = uilabel(app.TestParamsGrid, 'Text', 't_max:', 'FontColor', [1, 1, 1]);
-            app.TMaxEdit = uieditfield(app.TestParamsGrid, 'numeric', 'Value', 0.05, 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
-            app.NPulsesLabel = uilabel(app.TestParamsGrid, 'Text', 'n_pulses:', 'FontColor', [1, 1, 1]);
-            app.NPulsesEdit = uieditfield(app.TestParamsGrid, 'numeric', 'Value', 30, 'Limits', [1, 1000], 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
-            app.PulseWidthLabel = uilabel(app.TestParamsGrid, 'Text', 'pw (×τ):', 'FontColor', [1, 1, 1]);
-            app.PulseWidthEdit = uieditfield(app.TestParamsGrid, 'numeric', 'Value', 2, 'Limits', [0.1, 10], 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
-            app.GapLabel = uilabel(app.TestParamsGrid, 'Text', 'gap (×τ):', 'FontColor', [1, 1, 1]);
-            app.GapEdit = uieditfield(app.TestParamsGrid, 'numeric', 'Value', 1, 'Limits', [0.1, 10], 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
-            app.SaveDataCheck = uicheckbox(app.TestParamsGrid, 'Text', 'Save Data', 'Value', false, 'FontColor', [1, 1, 1]);
-            app.RunTestsBtn = uibutton(app.TestParamsGrid, 'Text', 'Run Tests', 'BackgroundColor', [0, 0.6, 0.2], 'FontColor', [1, 1, 1], 'FontWeight', 'bold', 'ButtonPushedFcn', @(src, evt) app.RunTestsBtnPushed());
-            app.CancelTestsBtn = uibutton(app.TestParamsGrid, 'Text', 'Cancel', 'BackgroundColor', [0.6, 0.1, 0.1], 'FontColor', [1, 1, 1], 'Enable', 'off', 'ButtonPushedFcn', @(src, evt) app.CancelTestsBtnPushed());
-            
-            % Results Panel
-            app.ResultsPanel = uipanel(app.RightGrid, ...
-                'Title', 'Results', ...
-                'BackgroundColor', [0.18, 0.18, 0.18], ...
-                'ForegroundColor', [1, 1, 1], ...
-                'FontWeight', 'bold');
-            
-            app.ResultsGrid = uigridlayout(app.ResultsPanel, [1, 1], ...
-                'Padding', [0, 0, 0, 0], ...
-                'BackgroundColor', [0.18, 0.18, 0.18]);
-            
-            app.ResultsTabGroup = uitabgroup(app.ResultsGrid);
-            
-            app.TransferTab = uitab(app.ResultsTabGroup, 'Title', 'Transfer');
-            app.TransferAxes = uiaxes(app.TransferTab);
-            app.TransferAxes.Color = [0.15, 0.15, 0.15];
-            app.TransferAxes.XColor = [1, 1, 1];
-            app.TransferAxes.YColor = [1, 1, 1];
-            app.TransferAxes.GridColor = [0.3, 0.3, 0.3];
-            app.TransferAxes.FontSize = 11;
-            
-            app.OutputTab = uitab(app.ResultsTabGroup, 'Title', 'Output');
-            app.OutputAxes = uiaxes(app.OutputTab);
-            app.OutputAxes.Color = [0.15, 0.15, 0.15];
-            app.OutputAxes.XColor = [1, 1, 1];
-            app.OutputAxes.YColor = [1, 1, 1];
-            app.OutputAxes.GridColor = [0.3, 0.3, 0.3];
-            app.OutputAxes.FontSize = 11;
-            
-            app.HysteresisTab = uitab(app.ResultsTabGroup, 'Title', 'Hysteresis');
-            app.HysteresisAxes = uiaxes(app.HysteresisTab);
-            app.HysteresisAxes.Color = [0.15, 0.15, 0.15];
-            app.HysteresisAxes.XColor = [1, 1, 1];
-            app.HysteresisAxes.YColor = [1, 1, 1];
-            app.HysteresisAxes.GridColor = [0.3, 0.3, 0.3];
-            app.HysteresisAxes.FontSize = 11;
-            
-            app.PPXTab = uitab(app.ResultsTabGroup, 'Title', 'PPX');
-            app.PPXAxes = uiaxes(app.PPXTab);
-            app.PPXAxes.Color = [0.15, 0.15, 0.15];
-            app.PPXAxes.XColor = [1, 1, 1];
-            app.PPXAxes.YColor = [1, 1, 1];
-            app.PPXAxes.GridColor = [0.3, 0.3, 0.3];
-            app.PPXAxes.FontSize = 11;
-            
-            app.PulseTrainTab = uitab(app.ResultsTabGroup, 'Title', 'Pulse Train');
-            app.PulseTrainAxes = uiaxes(app.PulseTrainTab);
-            app.PulseTrainAxes.Color = [0.15, 0.15, 0.15];
-            app.PulseTrainAxes.XColor = [1, 1, 1];
-            app.PulseTrainAxes.YColor = [1, 1, 1];
-            app.PulseTrainAxes.GridColor = [0.3, 0.3, 0.3];
-            app.PulseTrainAxes.FontSize = 11;
-
-            % EIS – Nyquist tab
-            app.NyquistTab = uitab(app.ResultsTabGroup, 'Title', 'Nyquist');
-            app.NyquistAxes = uiaxes(app.NyquistTab);
-            app.NyquistAxes.Color    = [0.15, 0.15, 0.15];
-            app.NyquistAxes.XColor   = [1, 1, 1];
-            app.NyquistAxes.YColor   = [1, 1, 1];
-            app.NyquistAxes.GridColor = [0.3, 0.3, 0.3];
-            app.NyquistAxes.FontSize  = 11;
-
-            % EIS – Bode tab (two stacked axes)
-            app.BodeTab = uitab(app.ResultsTabGroup, 'Title', 'Bode');
-            bodeGrid = uigridlayout(app.BodeTab, [2, 1], ...
-                'RowHeight', {'1x', '1x'}, 'Padding', [0, 0, 0, 0], ...
-                'BackgroundColor', [0.15, 0.15, 0.15]);
-            app.BodeMagAxes = uiaxes(bodeGrid);
-            app.BodeMagAxes.Color    = [0.15, 0.15, 0.15];
-            app.BodeMagAxes.XColor   = [1, 1, 1];
-            app.BodeMagAxes.YColor   = [1, 1, 1];
-            app.BodeMagAxes.GridColor = [0.3, 0.3, 0.3];
-            app.BodeMagAxes.FontSize  = 11;
-            app.BodePhaseAxes = uiaxes(bodeGrid);
-            app.BodePhaseAxes.Color    = [0.15, 0.15, 0.15];
-            app.BodePhaseAxes.XColor   = [1, 1, 1];
-            app.BodePhaseAxes.YColor   = [1, 1, 1];
-            app.BodePhaseAxes.GridColor = [0.3, 0.3, 0.3];
-            app.BodePhaseAxes.FontSize  = 11;
-
-            % EIS – Residuals tab
-            app.ResidualsTab = uitab(app.ResultsTabGroup, 'Title', 'Residuals');
-            app.ResidualsAxes = uiaxes(app.ResidualsTab);
-            app.ResidualsAxes.Color    = [0.15, 0.15, 0.15];
-            app.ResidualsAxes.XColor   = [1, 1, 1];
-            app.ResidualsAxes.YColor   = [1, 1, 1];
-            app.ResidualsAxes.GridColor = [0.3, 0.3, 0.3];
-            app.ResidualsAxes.FontSize  = 11;
+            % Checkboxes, per-test parameter fields, and the Save/Run/Cancel
+            % controls row are created in initializeTestCheckboxes().
             
             % Export Panel
             app.ExportPanel = uipanel(app.RightGrid, ...
