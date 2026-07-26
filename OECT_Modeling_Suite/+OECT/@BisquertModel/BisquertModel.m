@@ -363,9 +363,9 @@ classdef BisquertModel < OECT.Model
             fitResults.std_tau = std(tau_vals);
             fitResults.std_M0 = std(M0_vals);
             
-            obj.parameters.params.f = fitResults.avg_f;
-            obj.parameters.params.tau_de = fitResults.avg_tau_de;
-            obj.parameters.params.M0 = fitResults.avg_M0;
+            obj.parameters.setParameter('f', fitResults.avg_f);
+            obj.parameters.setParameter('tau_de', fitResults.avg_tau_de);
+            obj.parameters.setParameter('M0', fitResults.avg_M0);
             
             fitResults.parameters = obj.parameters;
             fitResults.all_results = allResults(good_idx);
