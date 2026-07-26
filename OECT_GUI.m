@@ -178,6 +178,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.populateDropdowns();
             app.initializeTestCheckboxes();
             app.setupDefaultValues();
+            app.refreshParameters();
             app.updateUIState();
             
             app.logger.info('GUI initialized successfully');
@@ -447,6 +448,7 @@ classdef OECT_GUI < matlab.apps.AppBase
         function onDataLoaded(app)
             app.isLoaded = true;
             app.DataStatusLabel.Text = '✓ Data loaded successfully';
+            app.refreshParameters();
             app.logger.info('Data loaded');
         end
 
@@ -553,12 +555,17 @@ classdef OECT_GUI < matlab.apps.AppBase
         end
 
         function browseSteadyStateFile(app)
-            [file, path] = uigetfile({'*.xlsx;*.csv;*.mat', 'Supported Files'}, 'Select Steady-State Data File');
+            if strcmp(app.getModelType(), 'Impedance')
+                dialogTitle = 'Select EIS Impedance Data File';
+            else
+                dialogTitle = 'Select Steady-State Data File';
+            end
+            [file, path] = uigetfile({'*.xlsx;*.xls;*.csv;*.mat', 'Supported Files'}, dialogTitle);
             if file ~= 0, app.SteadyStateEdit.Value = fullfile(path, file); end
         end
 
         function browseTransientFiles(app)
-            [files, path] = uigetfile({'*.xlsx;*.csv;*.mat', 'Supported Files'}, 'Select Transient Data Files', 'MultiSelect', 'on');
+            [files, path] = uigetfile({'*.xlsx;*.xls;*.csv;*.mat', 'Supported Files'}, 'Select Transient Data Files', 'MultiSelect', 'on');
             if iscell(files)
                 fullPaths = cellfun(@(f) fullfile(path, f), files, 'UniformOutput', false);
                 app.TransientEdit.Value = strjoin(fullPaths, '; ');
@@ -580,17 +587,7 @@ classdef OECT_GUI < matlab.apps.AppBase
 
             try
                 modelType = app.getModelType();
-                geometry.d = app.dEdit.Value;
-                geometry.L = app.LEdit.Value;
-                geometry.W = app.WEdit.Value;
-                geometry.T = app.TEdit.Value;
-
-                try
-                    app.parameters = OECT.Parameters(modelType);
-                    app.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
-                catch
-                    app.parameters = struct('geometry', geometry, 'params', struct());
-                end
+                app.refreshParameters();
 
                 if strcmp(modelType, 'Impedance')
                     % ---- EIS multi-start fitting ----
@@ -698,6 +695,8 @@ classdef OECT_GUI < matlab.apps.AppBase
             modelType = app.getModelType();
             if strcmp(modelType, 'Impedance')
                 app.SteadyStateLabel.Text = 'File:';
+                app.SteadyStateEdit.Tooltip = ['Select an .xlsx/.xls file with Frequency, ' ...
+                    'Magnitude and Phase sheets (see measurements/Impedance/README.md)'];
                 app.TransientLabel.Text   = '(unused)';
                 app.TransientEdit.Enable  = 'off';
                 app.TransientBrowseBtn.Enable = 'off';
@@ -707,6 +706,7 @@ classdef OECT_GUI < matlab.apps.AppBase
                 end
             else
                 app.SteadyStateLabel.Text = 'Steady:';
+                app.SteadyStateEdit.Tooltip = '';
                 app.TransientLabel.Text   = 'Transient:';
                 app.TransientEdit.Enable  = 'on';
                 app.TransientBrowseBtn.Enable = 'on';
@@ -762,8 +762,31 @@ classdef OECT_GUI < matlab.apps.AppBase
             end
         end
 
-        function updateParameterTable(app)
-            if isempty(app.parameters), return; end
+        function refreshParameters(app)
+            %REFRESHPARAMETERS  (Re)build app.parameters from the current model
+            %   and geometry selection, and refresh the Parameters table.
+            %   Called as soon as a model is chosen or data is loaded, so the
+            %   panel is populated (not left empty/grey) before fitting.
+            try
+                modelType = app.getModelType();
+                geometry.d = app.dEdit.Value;
+                geometry.L = app.LEdit.Value;
+                geometry.W = app.WEdit.Value;
+                geometry.T = app.TEdit.Value;
+
+                try
+                    app.parameters = OECT.Parameters(modelType);
+                    app.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
+                catch
+                    app.parameters = struct('geometry', geometry, 'params', struct());
+                end
+                app.updateParameterTable();
+            catch ME
+                app.logger.warn('Could not refresh parameters: %s', ME.message);
+            end
+        end
+
+        function updateParameterTable(app)            if isempty(app.parameters), return; end
             
             if isstruct(app.parameters)
                 paramNames = fieldnames(app.parameters.params);
@@ -1062,6 +1085,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             end
             app.updateUIState();
             app.updateDataPanelForModel();
+            app.refreshParameters();
         end
 
         function ParamsTableCellEdit(app, ~)
