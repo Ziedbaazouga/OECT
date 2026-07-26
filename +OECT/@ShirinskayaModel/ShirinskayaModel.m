@@ -534,10 +534,10 @@ end
             fitResults.std_Cd = std(Cd_vals);
             fitResults.std_f = std(f_vals);
             
-            obj.parameters.params.Rs = fitResults.avg_Rs;
-            obj.parameters.params.Rd = fitResults.avg_Rd;
-            obj.parameters.params.Cd = fitResults.avg_Cd;
-            obj.parameters.params.f = fitResults.avg_f;
+            obj.parameters.setParameter('Rs', fitResults.avg_Rs);
+            obj.parameters.setParameter('Rd', fitResults.avg_Rd);
+            obj.parameters.setParameter('Cd', fitResults.avg_Cd);
+            obj.parameters.setParameter('f', fitResults.avg_f);
             
             fitResults.parameters = obj.parameters;
             fitResults.all_results = allResults(good_idx);
