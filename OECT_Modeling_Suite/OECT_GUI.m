@@ -343,7 +343,20 @@ classdef OECT_GUI < matlab.apps.AppBase
 
         function updateUIState(app)
             if isstruct(app.stateManager)
-                state = 'Idle';
+                % No real StateManager available (construction failed at
+                % startup) - derive the UI state from the isLoaded/isFitted
+                % flags instead of hard-coding 'Idle', otherwise controls
+                % such as the Fit button would stay disabled forever even
+                % after data has been loaded successfully.
+                if app.isTesting
+                    state = 'Testing';
+                elseif app.isFitted
+                    state = 'Fitted';
+                elseif app.isLoaded
+                    state = 'DataLoaded';
+                else
+                    state = 'Idle';
+                end
             else
                 try
                     state = app.stateManager.getState();
@@ -533,7 +546,9 @@ classdef OECT_GUI < matlab.apps.AppBase
                 end
 
                 if ~isstruct(app.stateManager)
-                    try, app.stateManager.transition('DataLoaded'); catch, app.onDataLoaded(); end
+                    ok = false;
+                    try, ok = app.stateManager.transition('DataLoaded'); catch, end
+                    if ~ok, app.onDataLoaded(); end
                 else
                     app.onDataLoaded();
                 end
@@ -646,7 +661,9 @@ classdef OECT_GUI < matlab.apps.AppBase
                 app.FitStatusLabel.Text = sprintf('✓ Fit complete! R²=%.4f', fitResults.avgR2);
 
                 if ~isstruct(app.stateManager)
-                    try, app.stateManager.transition('Fitted'); catch, app.onFitted(); end
+                    ok = false;
+                    try, ok = app.stateManager.transition('Fitted'); catch, end
+                    if ~ok, app.onFitted(); end
                 else
                     app.onFitted();
                 end
@@ -836,7 +853,9 @@ classdef OECT_GUI < matlab.apps.AppBase
                 app.StatusBar.Text = sprintf('✓ %d tests complete', length(app.testResults));
                 
                 if ~isstruct(app.stateManager)
-                    try, app.stateManager.transition('Results'); catch, app.onResults(); end
+                    ok = false;
+                    try, ok = app.stateManager.transition('Results'); catch, end
+                    if ~ok, app.onResults(); end
                 else
                     app.onResults();
                 end
@@ -1056,9 +1075,16 @@ classdef OECT_GUI < matlab.apps.AppBase
 
         function ModelDropdownValueChanged(app, ~)
             app.logger.info('Model changed to: %s', app.ModelDropdown.Value);
+            % Changing the model invalidates any previously loaded data /
+            % fit, so reset back to the Idle state (previously this
+            % erroneously transitioned to 'DataLoaded', which left the Fit
+            % button enabled with no data loaded, and later broke the
+            % genuine 'Idle'->'DataLoaded' transition performed by
+            % loadData()).
+            app.isLoaded = false;
             app.isFitted = false;
             if ~isstruct(app.stateManager)
-                try, app.stateManager.transition('DataLoaded'); catch, end
+                try, app.stateManager.reset(); catch, end
             end
             app.updateUIState();
             app.updateDataPanelForModel();
