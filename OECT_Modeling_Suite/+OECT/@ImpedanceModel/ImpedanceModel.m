@@ -88,13 +88,13 @@ classdef ImpedanceModel < OECT.Model
                 % parallel loop – capture variables needed inside parfor
                 Rload_val = obj.Rload;
                 parfor s = 1:fitOptions.nStarts
-                    allResults{s} = ImpedanceModel.fitSingleStart( ...
+                    allResults{s} = OECT.ImpedanceModel.fitSingleStart( ...
                         guesses(s,:), lb, ub, w_vec, Z_meas, Rload_val, fitOptions);
                 end
             else
                 for s = 1:fitOptions.nStarts
                     obj.checkStop();
-                    allResults{s} = ImpedanceModel.fitSingleStart( ...
+                    allResults{s} = OECT.ImpedanceModel.fitSingleStart( ...
                         guesses(s,:), lb, ub, w_vec, Z_meas, obj.Rload, fitOptions);
 
                     if allResults{s}.success && allResults{s}.R2 > bestR2
@@ -121,7 +121,7 @@ classdef ImpedanceModel < OECT.Model
         function Z = computeImpedanceVec(obj, w_vec, p)
             %COMPUTEIMPEDANCEVEC  Vectorised circuit impedance.
             %  p = [R0 L0 C1 R1 C2 R2 A r R3]
-            Z = ImpedanceModel.circuitImpedance(w_vec, p, obj.Rload);
+            Z = OECT.ImpedanceModel.circuitImpedance(w_vec, p, obj.Rload);
         end
 
         % ----------------------------------------------------------------
@@ -140,7 +140,7 @@ classdef ImpedanceModel < OECT.Model
             if nargin >= 4 && ~isempty(fitResults) && isfield(fitResults, 'bestParams')
                 p    = fitResults.bestParams;
                 w_f  = 2*pi*eisData.frequency;
-                Z_fit = ImpedanceModel.circuitImpedance(w_f, p, obj.Rload);
+                Z_fit = OECT.ImpedanceModel.circuitImpedance(w_f, p, obj.Rload);
                 plot(ax, real(Z_fit), -imag(Z_fit), '-', ...
                     'LineWidth', 1.5, 'Color', [1 0.4 0.1], 'DisplayName', 'Fit');
             end
@@ -179,7 +179,7 @@ classdef ImpedanceModel < OECT.Model
             if nargin >= 5 && ~isempty(fitResults) && isfield(fitResults, 'bestParams')
                 p    = fitResults.bestParams;
                 w_f  = 2*pi*freq;
-                Z_fit = ImpedanceModel.circuitImpedance(w_f, p, obj.Rload);
+                Z_fit = OECT.ImpedanceModel.circuitImpedance(w_f, p, obj.Rload);
                 semilogx(axMag, freq, 20*log10(abs(Z_fit)), '-', ...
                     'LineWidth', 1.5, 'Color', [1 0.4 0.1], 'DisplayName', 'Fit');
                 semilogx(axPhase, freq, angle(Z_fit)*180/pi, '-', ...
@@ -197,7 +197,7 @@ classdef ImpedanceModel < OECT.Model
 
             freq  = eisData.frequency;
             Z_m   = eisData.Z_real + 1i * eisData.Z_imag;
-            Z_fit = ImpedanceModel.circuitImpedance(2*pi*freq, fitResults.bestParams, obj.Rload);
+            Z_fit = OECT.ImpedanceModel.circuitImpedance(2*pi*freq, fitResults.bestParams, obj.Rload);
             res   = (Z_m - Z_fit) ./ abs(Z_m) * 100;
 
             semilogx(ax, freq, real(res), '-o', 'MarkerSize', 3, ...
@@ -326,7 +326,7 @@ classdef ImpedanceModel < OECT.Model
             fitResults.parameters = obj.parameters;
 
             % Fitted impedance
-            Z_fit = ImpedanceModel.circuitImpedance(w_vec, fitResults.bestParams, obj.Rload);
+            Z_fit = OECT.ImpedanceModel.circuitImpedance(w_vec, fitResults.bestParams, obj.Rload);
             fitResults.Z_fit_real = real(Z_fit);
             fitResults.Z_fit_imag = imag(Z_fit);
 
@@ -393,7 +393,7 @@ classdef ImpedanceModel < OECT.Model
             result.chiSquared = Inf;
             result.params  = x0;
 
-            objective = @(p) ImpedanceModel.residualVec(p, w_vec, Z_meas, Rload);
+            objective = @(p) OECT.ImpedanceModel.residualVec(p, w_vec, Z_meas, Rload);
 
             try
                 fminOpts = optimoptions('fmincon', ...
@@ -410,7 +410,7 @@ classdef ImpedanceModel < OECT.Model
                     x0, [], [], [], [], lb, ub, [], fminOpts);
 
                 if exitflag >= 0
-                    Z_fit = ImpedanceModel.circuitImpedance(w_vec, p_opt, Rload);
+                    Z_fit = OECT.ImpedanceModel.circuitImpedance(w_vec, p_opt, Rload);
                     res   = Z_meas - Z_fit;
                     ss_res = sum(abs(res).^2);
                     ss_tot = sum(abs(Z_meas - mean(Z_meas)).^2);
@@ -433,7 +433,7 @@ classdef ImpedanceModel < OECT.Model
 
         function r = residualVec(p, w_vec, Z_meas, Rload)
             %RESIDUALVEC  Complex relative residual vector for lsqnonlin / sum-of-squares.
-            Z_fit = ImpedanceModel.circuitImpedance(w_vec, p, Rload);
+            Z_fit = OECT.ImpedanceModel.circuitImpedance(w_vec, p, Rload);
             denom = abs(Z_meas) + eps;
             r = [real(Z_meas - Z_fit) ./ denom; imag(Z_meas - Z_fit) ./ denom];
         end
