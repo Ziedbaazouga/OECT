@@ -59,6 +59,9 @@ classdef OECT_GUI < matlab.apps.AppBase
         FitProgress                     matlab.ui.control.Label
         FitStatusLabel                  matlab.ui.control.Label
         CancelFitBtn                    matlab.ui.control.Button
+        % Multi-start controls (Impedance EIS)
+        NStartsLabel                    matlab.ui.control.Label
+        NStartsEdit                     matlab.ui.control.NumericEditField
         
         % ===== RIGHT PANEL =====
         RightPanel                      matlab.ui.container.Panel
@@ -100,6 +103,14 @@ classdef OECT_GUI < matlab.apps.AppBase
         PPXAxes                         matlab.ui.control.UIAxes
         PulseTrainTab                   matlab.ui.container.Tab
         PulseTrainAxes                  matlab.ui.control.UIAxes
+        % EIS-specific result tabs
+        NyquistTab                      matlab.ui.container.Tab
+        NyquistAxes                     matlab.ui.control.UIAxes
+        BodeTab                         matlab.ui.container.Tab
+        BodeMagAxes                     matlab.ui.control.UIAxes
+        BodePhaseAxes                   matlab.ui.control.UIAxes
+        ResidualsTab                    matlab.ui.container.Tab
+        ResidualsAxes                   matlab.ui.control.UIAxes
         
         % Export
         ExportPanel                     matlab.ui.container.Panel
@@ -129,6 +140,11 @@ classdef OECT_GUI < matlab.apps.AppBase
         isLoaded logical = false
         isFitted logical = false
         config struct
+        % EIS-specific data
+        eisDataLoader        % OECT.ImpedanceDataLoader instance
+        eisData struct       % loaded EIS data
+        eisFitResults struct % last EIS fit results
+        cancelFitFlag logical = false
     end
 
     methods (Access = private)
@@ -229,7 +245,8 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.StatusBar.BackgroundColor = [0.15, 0.15, 0.15];
             app.StatusBar.FontColor = [0.8, 0.8, 0.8];
             
-            axesList = [app.TransferAxes, app.OutputAxes, app.HysteresisAxes, app.PPXAxes, app.PulseTrainAxes];
+            axesList = [app.TransferAxes, app.OutputAxes, app.HysteresisAxes, app.PPXAxes, app.PulseTrainAxes, ...
+                        app.NyquistAxes, app.BodeMagAxes, app.BodePhaseAxes, app.ResidualsAxes];
             for ax = axesList
                 if ~isempty(ax)
                     ax.BackgroundColor = [0.15, 0.15, 0.15];
@@ -244,7 +261,7 @@ classdef OECT_GUI < matlab.apps.AppBase
         function populateDropdowns(app)
             app.ModelDropdown.Items = {'Bisquert (Ionic Dynamics)', ...
                                        'Shirinskaya (PNP + RC)', ...
-                                       'Impedance (Coming Soon)'};
+                                       'Impedance (EIS Fitting)'};
             app.ModelDropdown.Value = 'Bisquert (Ionic Dynamics)';
         end
 
@@ -461,40 +478,60 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.logger.info('Loading data...');
             app.DataStatusLabel.Text = 'Loading...';
             drawnow;
-            
+
             try
-                steadyFile = app.SteadyStateEdit.Value;
-                transientFiles = app.TransientEdit.Value;
-                
-                if isempty(steadyFile) || ~isfile(steadyFile)
-                    error('Please select a valid steady-state file');
-                end
-                if isempty(transientFiles)
-                    error('Please select transient files');
-                end
-                
-                if contains(transientFiles, ';')
-                    files = strsplit(transientFiles, ';');
-                    files = strtrim(files);
-                else
-                    files = {transientFiles};
-                end
-                
-                if isstruct(app.dataLoader)
-                    sheets = {'Sheet1'};
-                else
-                    try
-                        app.dataLoader.loadSteadyState(steadyFile);
-                        app.dataLoader.loadTransient(files);
-                        sheets = app.dataLoader.steadyState.sheets;
-                    catch
-                        sheets = {'Sheet1'};
+                modelType = app.getModelType();
+
+                if strcmp(modelType, 'Impedance')
+                    % --- EIS mode: load from the "Steady" field (xlsx) ---
+                    eisFile = app.SteadyStateEdit.Value;
+                    if isempty(eisFile) || ~isfile(eisFile)
+                        error('Please select a valid EIS .xlsx file in the "File:" field');
                     end
+                    app.eisDataLoader = OECT.ImpedanceDataLoader();
+                    app.eisDataLoader.loadFile(eisFile);
+                    app.eisData = app.eisDataLoader.getData();
+                    app.SheetDropdown.Items = {'EIS Data'};
+                    app.SheetDropdown.Value = 'EIS Data';
+                    app.DataStatusLabel.Text = sprintf('✓ %d EIS points loaded', ...
+                        length(app.eisData.frequency));
+                    % Preview on Nyquist tab
+                    app.plotEISPreview();
+                else
+                    % --- Standard transient / steady-state mode ---
+                    steadyFile = app.SteadyStateEdit.Value;
+                    transientFiles = app.TransientEdit.Value;
+
+                    if isempty(steadyFile) || ~isfile(steadyFile)
+                        error('Please select a valid steady-state file');
+                    end
+                    if isempty(transientFiles)
+                        error('Please select transient files');
+                    end
+
+                    if contains(transientFiles, ';')
+                        files = strsplit(transientFiles, ';');
+                        files = strtrim(files);
+                    else
+                        files = {transientFiles};
+                    end
+
+                    if isstruct(app.dataLoader)
+                        sheets = {'Sheet1'};
+                    else
+                        try
+                            app.dataLoader.loadSteadyState(steadyFile);
+                            app.dataLoader.loadTransient(files);
+                            sheets = app.dataLoader.steadyState.sheets;
+                        catch
+                            sheets = {'Sheet1'};
+                        end
+                    end
+
+                    app.SheetDropdown.Items = sheets;
+                    if ~isempty(sheets), app.SheetDropdown.Value = sheets{1}; end
                 end
-                
-                app.SheetDropdown.Items = sheets;
-                if ~isempty(sheets), app.SheetDropdown.Value = sheets{1}; end
-                
+
                 if ~isstruct(app.stateManager)
                     try, app.stateManager.transition('DataLoaded'); catch, app.onDataLoaded(); end
                 else
@@ -502,7 +539,7 @@ classdef OECT_GUI < matlab.apps.AppBase
                 end
                 app.updateUIState();
                 app.logger.info('Data loaded successfully');
-                
+
             catch ME
                 app.logger.error('Data loading failed: %s', ME.message);
                 app.DataStatusLabel.Text = sprintf('ERROR: %s', ME.message);
@@ -532,40 +569,82 @@ classdef OECT_GUI < matlab.apps.AppBase
 
         function fitParameters(app)
             if app.isFitting, return; end
-            
+
             app.isFitting = true;
+            app.cancelFitFlag = false;
             app.FitBtn.Enable = 'off';
             app.CancelFitBtn.Enable = 'on';
             app.FitStatusLabel.Text = 'Fitting in progress...';
             app.FitProgress.Text = '0%';
             drawnow;
-            
+
             try
                 modelType = app.getModelType();
                 geometry.d = app.dEdit.Value;
                 geometry.L = app.LEdit.Value;
                 geometry.W = app.WEdit.Value;
                 geometry.T = app.TEdit.Value;
-                
+
                 try
                     app.parameters = OECT.Parameters(modelType);
                     app.parameters.setGeometry(geometry.d, geometry.L, geometry.W, geometry.T);
                 catch
-                    app.parameters = struct('geometry', geometry, 'params', struct('mu_h', 1e-5, 'C_star', 100, 'V_th', -0.2));
+                    app.parameters = struct('geometry', geometry, 'params', struct());
                 end
-                
-                app.FitProgress.Text = '30%'; drawnow; pause(0.2);
-                app.FitProgress.Text = '70%'; drawnow; pause(0.2);
-                
-                fitResults.avgR2 = 0.9845;
+
+                if strcmp(modelType, 'Impedance')
+                    % ---- EIS multi-start fitting ----
+                    if isempty(app.eisData) || ~isfield(app.eisData, 'frequency')
+                        error('Please load EIS data first');
+                    end
+                    eisModel = OECT.ImpedanceModel(app.parameters);
+
+                    nStarts = 50;
+                    if ~isempty(app.NStartsEdit) && isvalid(app.NStartsEdit)
+                        nStarts = max(1, round(app.NStartsEdit.Value));
+                    end
+
+                    progressFcn = @(s, nS, bestR2) app.updateFitProgress(s, nS, bestR2);
+                    fitOpts = struct('nStarts', nStarts, 'maxIter', 500, ...
+                        'tol', 1e-8, 'verbose', false, ...
+                        'useParallel', false, 'progressFcn', progressFcn);
+
+                    app.eisFitResults = eisModel.fit(app.eisData, fitOpts);
+                    fitResults = app.eisFitResults;
+                    app.parameters = fitResults.parameters;
+
+                    % Update plots
+                    if ~isempty(app.NyquistAxes) && isvalid(app.NyquistAxes)
+                        eisModel.plotNyquist(app.NyquistAxes, app.eisData, fitResults);
+                    end
+                    if ~isempty(app.BodeMagAxes) && isvalid(app.BodeMagAxes) && ...
+                            ~isempty(app.BodePhaseAxes) && isvalid(app.BodePhaseAxes)
+                        eisModel.plotBode(app.BodeMagAxes, app.BodePhaseAxes, ...
+                            app.eisData, fitResults);
+                    end
+                    if ~isempty(app.ResidualsAxes) && isvalid(app.ResidualsAxes)
+                        eisModel.plotResiduals(app.ResidualsAxes, app.eisData, fitResults);
+                    end
+
+                    % Switch to Nyquist tab
+                    if ~isempty(app.NyquistTab) && isvalid(app.NyquistTab)
+                        app.ResultsTabGroup.SelectedTab = app.NyquistTab;
+                    end
+                else
+                    % ---- Existing model fitting (placeholder) ----
+                    app.FitProgress.Text = '30%'; drawnow; pause(0.2);
+                    app.FitProgress.Text = '70%'; drawnow; pause(0.2);
+                    fitResults.avgR2 = 0.9845;
+                end
+
                 app.updateParameterTable();
-                
+
                 if ~isfolder('config'), mkdir('config'); end
                 save('config/modelParams.mat', 'fitResults');
-                
+
                 app.FitProgress.Text = '100%';
                 app.FitStatusLabel.Text = sprintf('✓ Fit complete! R²=%.4f', fitResults.avgR2);
-                
+
                 if ~isstruct(app.stateManager)
                     try, app.stateManager.transition('Fitted'); catch, app.onFitted(); end
                 else
@@ -573,7 +652,7 @@ classdef OECT_GUI < matlab.apps.AppBase
                 end
                 app.updateUIState();
                 app.logger.info('Fitting complete');
-                
+
             catch ME
                 app.logger.error('Fitting failed: %s', ME.message);
                 app.FitStatusLabel.Text = sprintf('ERROR: %s', ME.message);
@@ -585,14 +664,22 @@ classdef OECT_GUI < matlab.apps.AppBase
                 end
                 app.updateUIState();
             end
-            
+
             app.isFitting = false;
             app.FitBtn.Enable = 'on';
             app.CancelFitBtn.Enable = 'off';
         end
 
+        function updateFitProgress(app, s, nStarts, bestR2)
+            pct = round(100 * s / nStarts);
+            app.FitProgress.Text = sprintf('%d%%', pct);
+            app.FitStatusLabel.Text = sprintf('Start %d/%d | Best R²=%.4f', s, nStarts, bestR2);
+            drawnow limitrate;
+        end
+
         function cancelFit(app)
             if app.isFitting
+                app.cancelFitFlag = true;
                 app.FitStatusLabel.Text = 'Cancelling fit...';
                 app.logger.info('Fit cancelled by user');
             end
@@ -603,6 +690,75 @@ classdef OECT_GUI < matlab.apps.AppBase
             if contains(value, 'Bisquert'), modelType = 'Bisquert';
             elseif contains(value, 'Shirinskaya'), modelType = 'Shirinskaya';
             else, modelType = 'Impedance';
+            end
+        end
+
+        function updateDataPanelForModel(app)
+            %UPDATEDATAPANELFORMODEL  Adapt Data Loading labels for the selected model.
+            modelType = app.getModelType();
+            if strcmp(modelType, 'Impedance')
+                app.SteadyStateLabel.Text = 'File:';
+                app.TransientLabel.Text   = '(unused)';
+                app.TransientEdit.Enable  = 'off';
+                app.TransientBrowseBtn.Enable = 'off';
+                if ~isempty(app.NStartsLabel) && isvalid(app.NStartsLabel)
+                    app.NStartsLabel.Visible = 'on';
+                    app.NStartsEdit.Visible  = 'on';
+                end
+            else
+                app.SteadyStateLabel.Text = 'Steady:';
+                app.TransientLabel.Text   = 'Transient:';
+                app.TransientEdit.Enable  = 'on';
+                app.TransientBrowseBtn.Enable = 'on';
+                if ~isempty(app.NStartsLabel) && isvalid(app.NStartsLabel)
+                    app.NStartsLabel.Visible = 'off';
+                    app.NStartsEdit.Visible  = 'off';
+                end
+            end
+        end
+
+        function plotEISPreview(app)
+            %PLOTEISPREVIEW  Show experimental Nyquist plot after loading EIS data.
+            if isempty(app.eisData) || ~isfield(app.eisData, 'Z_real'), return; end
+            try
+                if ~isempty(app.NyquistAxes) && isvalid(app.NyquistAxes)
+                    ax = app.NyquistAxes;
+                    cla(ax);
+                    plot(ax, app.eisData.Z_real, -app.eisData.Z_imag, 'o', ...
+                        'MarkerSize', 4, 'Color', [0.3 0.6 1]);
+                    xlabel(ax, 'Z_{real} (\Omega)');
+                    ylabel(ax, '-Z_{imag} (\Omega)');
+                    title(ax, 'Nyquist – Experimental');
+                    grid(ax, 'on'); axis(ax, 'equal');
+                    if ~isempty(app.NyquistTab) && isvalid(app.NyquistTab)
+                        app.ResultsTabGroup.SelectedTab = app.NyquistTab;
+                    end
+                end
+                if ~isempty(app.BodeMagAxes) && isvalid(app.BodeMagAxes)
+                    axM = app.BodeMagAxes;
+                    cla(axM);
+                    freq = app.eisData.frequency;
+                    Z_m  = app.eisData.Z_real + 1i * app.eisData.Z_imag;
+                    semilogx(axM, freq, 20*log10(abs(Z_m)), 'o', ...
+                        'MarkerSize', 4, 'Color', [0.3 0.6 1]);
+                    ylabel(axM, '|Z| (dB\Omega)');
+                    title(axM, 'Bode – Magnitude');
+                    grid(axM, 'on');
+                end
+                if ~isempty(app.BodePhaseAxes) && isvalid(app.BodePhaseAxes)
+                    axP = app.BodePhaseAxes;
+                    cla(axP);
+                    freq = app.eisData.frequency;
+                    Z_m  = app.eisData.Z_real + 1i * app.eisData.Z_imag;
+                    semilogx(axP, freq, angle(Z_m)*180/pi, 'o', ...
+                        'MarkerSize', 4, 'Color', [0.3 0.6 1]);
+                    ylabel(axP, 'Phase (deg)');
+                    xlabel(axP, 'Frequency (Hz)');
+                    title(axP, 'Bode – Phase');
+                    grid(axP, 'on');
+                end
+            catch ME
+                app.logger.warn('EIS preview failed: %s', ME.message);
             end
         end
 
@@ -836,6 +992,16 @@ classdef OECT_GUI < matlab.apps.AppBase
                         exportgraphics(axes(i), filename, 'Resolution', 300);
                     end
                 end
+                % Also export EIS plots if available
+                eisAxes = {app.NyquistAxes, app.BodeMagAxes, app.BodePhaseAxes, app.ResidualsAxes};
+                eisNames = {'nyquist', 'bode_mag', 'bode_phase', 'residuals'};
+                for i = 1:length(eisAxes)
+                    ax = eisAxes{i};
+                    if ~isempty(ax) && isvalid(ax) && ~isempty(ax.Children)
+                        filename = sprintf('results/exports/eis_%s_%s.png', eisNames{i}, timestamp);
+                        exportgraphics(ax, filename, 'Resolution', 300);
+                    end
+                end
                 app.StatusBar.Text = '✓ Plots exported to results/exports/';
                 app.logger.info('Plots exported');
             catch ME, app.StatusBar.Text = sprintf('ERROR: %s', ME.message); end
@@ -895,6 +1061,7 @@ classdef OECT_GUI < matlab.apps.AppBase
                 try, app.stateManager.transition('DataLoaded'); catch, end
             end
             app.updateUIState();
+            app.updateDataPanelForModel();
         end
 
         function ParamsTableCellEdit(app, ~)
@@ -977,7 +1144,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.ModelDropdown = uidropdown(app.ModelGrid, ...
                 'Items', {'Bisquert (Ionic Dynamics)', ...
                          'Shirinskaya (PNP + RC)', ...
-                         'Impedance (Coming Soon)'}, ...
+                         'Impedance (EIS Fitting)'}, ...
                 'Value', 'Bisquert (Ionic Dynamics)', ...
                 'BackgroundColor', [0.25, 0.25, 0.25], ...
                 'FontColor', [1, 1, 1], ...
@@ -1056,17 +1223,19 @@ classdef OECT_GUI < matlab.apps.AppBase
                 'BackgroundColor', [0.18, 0.18, 0.18], ...
                 'ForegroundColor', [1, 1, 1], ...
                 'FontWeight', 'bold');
-            
-            app.FitGrid = uigridlayout(app.FitPanel, [5, 2], ...
-                'RowHeight', {25, 25, 25, 25, 25}, ...
+
+            app.FitGrid = uigridlayout(app.FitPanel, [6, 2], ...
+                'RowHeight', {25, 25, 25, 25, 25, 25}, ...
                 'ColumnWidth', {'1x', '1x'}, ...
                 'Padding', [5, 5, 5, 5], ...
                 'BackgroundColor', [0.18, 0.18, 0.18]);
-            
+
             app.R2Label = uilabel(app.FitGrid, 'Text', 'R² threshold:', 'FontColor', [1, 1, 1]);
             app.R2Edit = uieditfield(app.FitGrid, 'numeric', 'Value', 0.5, 'Limits', [0, 1], 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
             app.NRMSELabel = uilabel(app.FitGrid, 'Text', 'NRMSE threshold:', 'FontColor', [1, 1, 1]);
             app.NRMSEEdit = uieditfield(app.FitGrid, 'numeric', 'Value', 0.2, 'Limits', [0, 1], 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1]);
+            app.NStartsLabel = uilabel(app.FitGrid, 'Text', '# Starts (EIS):', 'FontColor', [1, 1, 1], 'Visible', 'off');
+            app.NStartsEdit  = uieditfield(app.FitGrid, 'numeric', 'Value', 50, 'Limits', [1, 5000], 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [1, 1, 1], 'Visible', 'off');
             app.FitBtn = uibutton(app.FitGrid, 'Text', 'Fit Parameters', 'BackgroundColor', [0, 0.5, 0.8], 'FontColor', [1, 1, 1], 'FontWeight', 'bold', 'ButtonPushedFcn', @(src, evt) app.FitBtnPushed());
             app.CancelFitBtn = uibutton(app.FitGrid, 'Text', 'Cancel', 'BackgroundColor', [0.6, 0.1, 0.1], 'FontColor', [1, 1, 1], 'Enable', 'off', 'ButtonPushedFcn', @(src, evt) app.CancelFitBtnPushed());
             app.FitProgress = uilabel(app.FitGrid, 'Text', '0%', 'HorizontalAlignment', 'center', 'BackgroundColor', [0.25, 0.25, 0.25], 'FontColor', [0.9, 0.9, 0.9]);
@@ -1173,6 +1342,42 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.PulseTrainAxes.YColor = [1, 1, 1];
             app.PulseTrainAxes.GridColor = [0.3, 0.3, 0.3];
             app.PulseTrainAxes.FontSize = 11;
+
+            % EIS – Nyquist tab
+            app.NyquistTab = uitab(app.ResultsTabGroup, 'Title', 'Nyquist');
+            app.NyquistAxes = uiaxes(app.NyquistTab);
+            app.NyquistAxes.Color    = [0.15, 0.15, 0.15];
+            app.NyquistAxes.XColor   = [1, 1, 1];
+            app.NyquistAxes.YColor   = [1, 1, 1];
+            app.NyquistAxes.GridColor = [0.3, 0.3, 0.3];
+            app.NyquistAxes.FontSize  = 11;
+
+            % EIS – Bode tab (two stacked axes)
+            app.BodeTab = uitab(app.ResultsTabGroup, 'Title', 'Bode');
+            bodeGrid = uigridlayout(app.BodeTab, [2, 1], ...
+                'RowHeight', {'1x', '1x'}, 'Padding', [0, 0, 0, 0], ...
+                'BackgroundColor', [0.15, 0.15, 0.15]);
+            app.BodeMagAxes = uiaxes(bodeGrid);
+            app.BodeMagAxes.Color    = [0.15, 0.15, 0.15];
+            app.BodeMagAxes.XColor   = [1, 1, 1];
+            app.BodeMagAxes.YColor   = [1, 1, 1];
+            app.BodeMagAxes.GridColor = [0.3, 0.3, 0.3];
+            app.BodeMagAxes.FontSize  = 11;
+            app.BodePhaseAxes = uiaxes(bodeGrid);
+            app.BodePhaseAxes.Color    = [0.15, 0.15, 0.15];
+            app.BodePhaseAxes.XColor   = [1, 1, 1];
+            app.BodePhaseAxes.YColor   = [1, 1, 1];
+            app.BodePhaseAxes.GridColor = [0.3, 0.3, 0.3];
+            app.BodePhaseAxes.FontSize  = 11;
+
+            % EIS – Residuals tab
+            app.ResidualsTab = uitab(app.ResultsTabGroup, 'Title', 'Residuals');
+            app.ResidualsAxes = uiaxes(app.ResidualsTab);
+            app.ResidualsAxes.Color    = [0.15, 0.15, 0.15];
+            app.ResidualsAxes.XColor   = [1, 1, 1];
+            app.ResidualsAxes.YColor   = [1, 1, 1];
+            app.ResidualsAxes.GridColor = [0.3, 0.3, 0.3];
+            app.ResidualsAxes.FontSize  = 11;
             
             % Export Panel
             app.ExportPanel = uipanel(app.RightGrid, ...
