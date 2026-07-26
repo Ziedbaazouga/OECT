@@ -888,11 +888,17 @@ classdef OECT_GUI < matlab.apps.AppBase
             switch testName
                 case 'Transfer'
                     if strcmp(dataType, 'Vgs'), out = -0.4:0.05:0.6;
-                    elseif strcmp(dataType, 'Id'), out = [0.1, 0.2; 0.3, 0.5; 0.8, 1.2] * ones(1, 21); out = out(1:21, :);
+                    elseif strcmp(dataType, 'Id')
+                        ctrlPts = [0.1, 0.2; 0.3, 0.5; 0.8, 1.2];
+                        out = interp1(linspace(0, 1, size(ctrlPts, 1)), ctrlPts, ...
+                            linspace(0, 1, 21));
                     else, out = [-0.1, -0.5]; end
                 case 'Output'
                     if strcmp(dataType, 'Vds'), out = -0.6:0.05:0.0;
-                    elseif strcmp(dataType, 'Id'), out = [-0.2, -0.4; -0.6, -0.9] * ones(1, 13); out = out(1:13, :);
+                    elseif strcmp(dataType, 'Id')
+                        ctrlPts = [-0.2, -0.4; -0.6, -0.9];
+                        out = interp1(linspace(0, 1, size(ctrlPts, 1)), ctrlPts, ...
+                            linspace(0, 1, 13));
                     else, out = [0.0, 0.4]; end
                 case 'Hysteresis'
                     if strcmp(dataType, 'Vg_forward'), out = -0.2:0.05:0.6;
