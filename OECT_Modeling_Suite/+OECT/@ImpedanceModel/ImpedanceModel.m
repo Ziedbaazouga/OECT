@@ -320,7 +320,7 @@ classdef ImpedanceModel < OECT.Model
             pNames = {'R0','L0','C1','R1','C2','R2','A','r','R3'};
             for k = 1:length(pNames)
                 if isfield(obj.parameters.params, pNames{k})
-                    obj.parameters.params.(pNames{k}) = fitResults.bestParams(k);
+                    obj.parameters.setParameter(pNames{k}, fitResults.bestParams(k));
                 end
             end
             fitResults.parameters = obj.parameters;
