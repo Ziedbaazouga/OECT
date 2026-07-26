@@ -28,7 +28,14 @@ end
 function setupPaths()
     % Add all required paths
     baseDir = fileparts(mfilename('fullpath'));
-    addpath(genpath(baseDir));
+
+    % Exclude the nested OECT_Modeling_Suite copy of this project (it
+    % ships its own +OECT package) to avoid adding two conflicting
+    % definitions of the same package to the MATLAB path.
+    allPaths = strsplit(genpath(baseDir), pathsep);
+    nestedSuite = fullfile(baseDir, 'OECT_Modeling_Suite');
+    isNested = strncmp(allPaths, nestedSuite, length(nestedSuite));
+    addpath(strjoin(allPaths(~isNested), pathsep));
     
     % Create required directories
     dirs = {'data', 'results', 'results/fits', 'results/simulations', ...
