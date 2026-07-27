@@ -648,7 +648,8 @@ classdef OECT_GUI < matlab.apps.AppBase
                     end
                 else
                     % ---- Bisquert / Shirinskaya fitting (real model fit) ----
-                    if isempty(app.dataLoader) || isstruct(app.dataLoader) || ~app.dataLoader.isLoaded
+                    if isempty(app.dataLoader) || isstruct(app.dataLoader) ...
+                            || ~isprop(app.dataLoader, 'isLoaded') || ~app.dataLoader.isLoaded
                         error('Please load steady-state and transient data first');
                     end
 

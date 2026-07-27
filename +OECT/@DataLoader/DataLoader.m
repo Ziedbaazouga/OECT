@@ -3,6 +3,7 @@ classdef DataLoader < handle
         logger
         steadyState
         transient
+        isLoaded logical = false
     end
 
     methods
@@ -14,7 +15,7 @@ classdef DataLoader < handle
 
         function loadSteadyState(obj, file_name_steadystate, sheetnames_steadystate)
             if nargin < 3 || isempty(sheetnames_steadystate)
-                [~, sheetnames_steadystate] = xlsfinfo(file_name_steadystate);
+                sheetnames_steadystate = sheetnames(file_name_steadystate);
             end
             if isstring(sheetnames_steadystate), sheetnames_steadystate = cellstr(sheetnames_steadystate); end
 
@@ -29,6 +30,8 @@ classdef DataLoader < handle
             obj.steadyState.tables = tables;
             obj.steadyState.parsed = [];   % old flow compatibility
             obj.logger.info('Steady-state data loaded successfully');
+
+            obj.updateIsLoaded();
         end
 
         function loadTransient(obj, file_name_transient, sheetnames_transient)
@@ -67,6 +70,8 @@ classdef DataLoader < handle
             obj.transient.parsed = parsed;
             obj.transient.filenames = file_name_transient; % GUI compatibility
             obj.logger.info('Transient data loaded successfully');
+
+            obj.updateIsLoaded();
         end
 
         function [Vds, Vgs] = parseBiasFromFilename(~, filePath)
@@ -81,6 +86,15 @@ classdef DataLoader < handle
 
             Vds = str2double(tok{1})/10;
             Vgs = str2double(tok{2})/10;
+        end
+    end
+
+    methods (Access = private)
+        function updateIsLoaded(obj)
+            %UPDATEISLOADED  Mark the loader as loaded once both steady-state
+            %   and transient data have been read in.
+            obj.isLoaded = isfield(obj.steadyState, 'tables') && ~isempty(obj.steadyState.tables) ...
+                && isfield(obj.transient, 'parsed') && ~isempty(obj.transient.parsed);
         end
     end
 end

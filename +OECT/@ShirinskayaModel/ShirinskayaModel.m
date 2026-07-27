@@ -309,9 +309,13 @@ classdef ShirinskayaModel < OECT.Model
         end
         
         function [p_opt, info] = fitRC(obj, t, Id, Vgs, Vds, gm_val, I0, weights)
-            lb = [1, 1, 1e-12, 0];
-            ub = [1e7, 1e9, 1, 1];
+            % Fitting range for [Rs, Rd, Cd, f], overridable per-parameter
+            % via obj.parameters.setParamBounds (e.g. from the GUI).
+            boundsStruct = obj.getParameterBounds();
+            lb = [boundsStruct.Rs(1), boundsStruct.Rd(1), boundsStruct.Cd(1), boundsStruct.f(1)];
+            ub = [boundsStruct.Rs(2), boundsStruct.Rd(2), boundsStruct.Cd(2), boundsStruct.f(2)];
             p0 = [2e3, 15e4, 3e-3, 0.5];
+            p0 = min(max(p0, lb), ub);
             
             function I = rc_model(p)
                 Rs = p(1);
@@ -405,7 +409,6 @@ function paramNames = getParameterNames(obj)
 end
 
 function bounds = getParameterBounds(obj)
-    %#ok<MANU>
     bounds = struct( ...
         'conductance_max', [0.1, 1e6], ...
         'Rs', [1, 1e7], ...
@@ -413,6 +416,7 @@ function bounds = getParameterBounds(obj)
         'Cd', [1e-12, 1], ...
         'f', [0, 1], ...
         'holes_mobility', [1e-6, 1]);
+    bounds = obj.mergeUserBounds(bounds);
 end
 
 function [Vg, Id, gm] = transferCharacteristics(obj, Vg_range, Vds_fixed)

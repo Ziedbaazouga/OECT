@@ -178,8 +178,9 @@ classdef BisquertModel < OECT.Model
         function name = getModelName(~), name = 'Bisquert'; end
         function desc = getModelDescription(~), desc = 'Bisquert model (embedded old-old fitting pipeline)'; end
         function params = getParameterNames(~), params = {'P0','M0','tau_de','f','uc','holes_mobility'}; end
-        function bounds = getParameterBounds(~)
+        function bounds = getParameterBounds(obj)
             bounds = struct('P0',[1e20,1e30],'M0',[1e10,1e30],'tau_de',[1e-9,1e5],'f',[0,1],'uc',[-5,5],'holes_mobility',[1e-8,1]);
+            bounds = obj.mergeUserBounds(bounds);
         end
     end
 
@@ -362,9 +363,21 @@ classdef BisquertModel < OECT.Model
             if nargin < 12 || isempty(doPlot), doPlot = false; end
             q = 1.602176634e-19;
 
-            lb = [0, -9, 10, -1e-4];
-            ub = [1,  5, 17,  1e-4];
+            % Internal fit vector p = [f, log10(tau_de), log10(M0), I_off].
+            % f, tau_de and M0 ranges come from the user-configurable
+            % fitting range (obj.getParameterBounds, overridable e.g. from
+            % the GUI); I_off is an internal offset current, not a
+            % user-facing model parameter, so it keeps a fixed default range.
+            paramBounds = obj.getParameterBounds();
+            f_bounds      = paramBounds.f;
+            tau_de_bounds = paramBounds.tau_de;
+            M0_bounds     = paramBounds.M0;
+            I_off_bound   = 1e-4;
+
+            lb = [f_bounds(1), log10(max(tau_de_bounds(1), realmin)), log10(max(M0_bounds(1), realmin)), -I_off_bound];
+            ub = [f_bounds(2), log10(tau_de_bounds(2)),                log10(M0_bounds(2)),                I_off_bound];
             p0 = [0.5, -2, log10(max(P0,1e10)), 0];
+            p0 = min(max(p0, lb), ub);
 
             localOptions = optimoptions('fmincon', 'Display', 'off', 'Algorithm', 'sqp');
             nSheets = length(sheetnames_transient);
@@ -526,7 +539,7 @@ classdef BisquertModel < OECT.Model
 
             if isfield(ss,'sheetNames') && ~isempty(ss.sheetNames), steadySheets = ss.sheetNames;
             elseif isfield(ss,'sheets') && ~isempty(ss.sheets), steadySheets = ss.sheets;
-            else, [~, steadySheets] = xlsfinfo(steadyFile);
+            else, steadySheets = sheetnames(steadyFile);
             end
 
             if ischar(steadySheets), steadySheets = {steadySheets}; end

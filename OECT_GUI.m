@@ -647,7 +647,8 @@ classdef OECT_GUI < matlab.apps.AppBase
                     eisModel.plotResiduals(app.getResultAxes('Residuals'), app.eisData, fitResults);
                 else
                     % ---- Bisquert / Shirinskaya fitting (real model fit) ----
-                    if isempty(app.dataLoader) || isstruct(app.dataLoader) || ~app.dataLoader.isLoaded
+                    if isempty(app.dataLoader) || isstruct(app.dataLoader) ...
+                            || ~isprop(app.dataLoader, 'isLoaded') || ~app.dataLoader.isLoaded
                         error('Please load steady-state and transient data first');
                     end
 
@@ -838,24 +839,35 @@ classdef OECT_GUI < matlab.apps.AppBase
                 paramNames = fieldnames(app.parameters.params);
                 getParam = @(field) app.parameters.params.(field);
                 getGeom = @(field) app.parameters.geometry.(field);
+                getBounds = @(field) [];
             else
                 try
                     paramNames = fieldnames(app.parameters.params);
                     getParam = @(field) app.parameters.params.(field);
                     getGeom = @(field) app.parameters.geometry.(field);
+                    getBounds = @(field) app.parameters.getParamBounds(field);
                 catch
                     paramNames = {'mu_h', 'C_star', 'V_th'};
                     getParam = @(field) 1e-5;
                     getGeom = @(field) 10e-6;
+                    getBounds = @(field) [];
                 end
             end
             
             nParams = length(paramNames);
-            data = cell(nParams + 4, 3);
+            data = cell(nParams + 4, 5);
             for i = 1:nParams
+                bounds = getBounds(paramNames{i});
                 data{i,1} = paramNames{i};
                 data{i,2} = getParam(paramNames{i});
-                data{i,3} = '';
+                if numel(bounds) == 2
+                    data{i,3} = bounds(1);
+                    data{i,4} = bounds(2);
+                else
+                    data{i,3} = [];
+                    data{i,4} = [];
+                end
+                data{i,5} = '';
             end
             
             geomFields = {'d', 'L', 'W', 'T'};
@@ -863,13 +875,15 @@ classdef OECT_GUI < matlab.apps.AppBase
             for k = 1:4
                 data{nParams+k, 1} = geomFields{k};
                 data{nParams+k, 2} = getGeom(geomFields{k});
-                data{nParams+k, 3} = units{k};
+                data{nParams+k, 3} = [];
+                data{nParams+k, 4} = [];
+                data{nParams+k, 5} = units{k};
             end
             
             app.ParamsTable.Data = data;
-            app.ParamsTable.ColumnName = {'Parameter', 'Value', 'Units'};
-            app.ParamsTable.ColumnWidth = {120, 150, 80};
-            app.ParamsTable.ColumnEditable = [false, true, false];
+            app.ParamsTable.ColumnName = {'Parameter', 'Value', 'Fit Min', 'Fit Max', 'Units'};
+            app.ParamsTable.ColumnWidth = {110, 110, 90, 90, 60};
+            app.ParamsTable.ColumnEditable = [false, true, true, true, false];
         end
 
         function runTests(app)
@@ -1133,22 +1147,45 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.refreshParameters();
         end
 
-        function ParamsTableCellEdit(app, ~)
+        function ParamsTableCellEdit(app, evt)
             if isempty(app.parameters), return; end
-            row = app.ParamsTable.Selection(1);
+            if nargin < 2 || isempty(evt) || ~isprop(evt, 'Indices')
+                row = app.ParamsTable.Selection(1);
+                col = 2;
+            else
+                row = evt.Indices(1);
+                col = evt.Indices(2);
+            end
             data = app.ParamsTable.Data;
             if isempty(data) || row > size(data, 1), return; end
             paramName = data{row, 1};
-            newValue = data{row, 2};
             try
-                if isstruct(app.parameters)
-                    if isfield(app.parameters.params, paramName)
-                        app.parameters.params.(paramName) = newValue;
-                    end
-                else
-                    app.parameters.setParameter(paramName, newValue);
+                switch col
+                    case 2
+                        newValue = data{row, 2};
+                        if isstruct(app.parameters)
+                            if isfield(app.parameters.params, paramName)
+                                app.parameters.params.(paramName) = newValue;
+                            end
+                        else
+                            app.parameters.setParameter(paramName, newValue);
+                        end
+                        app.logger.info('Parameter updated: %s = %.4e', paramName, newValue);
+
+                    case {3, 4}
+                        % Fit Min / Fit Max columns: change the fitting
+                        % range used for this parameter by all models.
+                        if isstruct(app.parameters) || ~isfield(app.parameters.params, paramName)
+                            return; % geometry rows / no bounds support
+                        end
+                        newLb = data{row, 3};
+                        newUb = data{row, 4};
+                        if isempty(newLb) || isempty(newUb)
+                            return;
+                        end
+                        app.parameters.setParamBounds(paramName, newLb, newUb);
+                        app.logger.info('Fitting range updated: %s = [%.4e, %.4e]', paramName, newLb, newUb);
                 end
-                app.logger.info('Parameter updated: %s = %.4e', paramName, newValue);
             catch ME
                 app.StatusBar.Text = sprintf('ERROR: %s', ME.message);
                 app.updateParameterTable();
@@ -1280,11 +1317,11 @@ classdef OECT_GUI < matlab.apps.AppBase
                 'BackgroundColor', [0.18, 0.18, 0.18]);
             
             app.ParamsTable = uitable(app.ParamsGrid, ...
-                'ColumnName', {'Parameter', 'Value', 'Units'}, ...
-                'ColumnWidth', {120, 150, 80}, ...
-                'ColumnEditable', [false, true, false], ...
+                'ColumnName', {'Parameter', 'Value', 'Fit Min', 'Fit Max', 'Units'}, ...
+                'ColumnWidth', {110, 110, 90, 90, 60}, ...
+                'ColumnEditable', [false, true, true, true, false], ...
                 'BackgroundColor', [0.25, 0.25, 0.25], ...
-                'CellEditCallback', @(src, evt) app.ParamsTableCellEdit());
+                'CellEditCallback', @(src, evt) app.ParamsTableCellEdit(evt));
             
             % Fit Panel
             app.FitPanel = uipanel(app.LeftGrid, ...
