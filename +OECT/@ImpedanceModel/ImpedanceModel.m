@@ -74,8 +74,17 @@ classdef ImpedanceModel < OECT.Model
                 length(frequencies), fitOptions.nStarts);
 
             % Parameter bounds  [R0  L0   C1   R1   C2   R2   A    r    R3]
-            lb = [1e-3, 1e-12, 1e-12, 1e-3, 1e-12, 1e-3, 1e-6, 1e-3, 0    ];
-            ub = [1e6,  1e-1,  1e-1,  1e6,  1e-1,  1e6,  1e8,  1e5,  1e6  ];
+            % (defaults, overridable per-parameter via obj.parameters.setParamBounds,
+            % e.g. from the GUI's fitting-range columns)
+            paramOrder = {'R0','L0','C1','R1','C2','R2','A','r','R3'};
+            boundsStruct = obj.getParameterBounds();
+            lb = zeros(1, numel(paramOrder));
+            ub = zeros(1, numel(paramOrder));
+            for k = 1:numel(paramOrder)
+                b = boundsStruct.(paramOrder{k});
+                lb(k) = b(1);
+                ub(k) = b(2);
+            end
 
             % Build initial guesses via LHS
             guesses = obj.latinHypercubeSampling(fitOptions.nStarts, lb, ub);
@@ -242,6 +251,7 @@ classdef ImpedanceModel < OECT.Model
                 'A',   [1e-6, 1e8], ...
                 'r',   [1e-3, 1e5], ...
                 'R3',  [0, 1e6]);
+            bounds = obj.mergeUserBounds(bounds);
         end
 
         function [Vg, Id, gm] = transferCharacteristics(obj, Vg_range, ~)

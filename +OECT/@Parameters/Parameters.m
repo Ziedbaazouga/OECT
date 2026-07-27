@@ -16,6 +16,12 @@ classdef Parameters < handle
         % Model-specific parameters (stored in nested struct)
         params struct = struct()
         
+        % User-configurable fitting range (lower/upper bound) for each
+        % model parameter, stored as paramBounds.(name) = [lb, ub].
+        % Populated with model-specific defaults in initializeDefaultParams
+        % and can be overridden (e.g. from the GUI) via setParamBounds().
+        paramBounds struct = struct()
+        
         % Metadata
         metadata struct = struct('fitDate', '', 'sourceFiles', {{}}, 'R2', [], 'RMSE', [])
         
@@ -63,6 +69,14 @@ classdef Parameters < handle
                     obj.params.f = 0.5;
                     obj.params.uc = 0.05;
                     obj.params.holes_mobility = 2e-4;
+
+                    obj.paramBounds = struct( ...
+                        'P0',             [1e20, 1e30], ...
+                        'M0',             [1e10, 1e30], ...
+                        'tau_de',         [1e-9, 1e5], ...
+                        'f',              [0,    1], ...
+                        'uc',             [-5,   5], ...
+                        'holes_mobility', [1e-8, 1]);
                     
                 case 'Shirinskaya'
                     obj.params.conductance_max = 100;
@@ -71,6 +85,14 @@ classdef Parameters < handle
                     obj.params.Cd = 3e-3;
                     obj.params.f = 0.5;
                     obj.params.holes_mobility = 2e-4;
+
+                    obj.paramBounds = struct( ...
+                        'conductance_max', [0.1,  1e6], ...
+                        'Rs',              [1,    1e7], ...
+                        'Rd',              [1,    1e9], ...
+                        'Cd',              [1e-12, 1], ...
+                        'f',               [0,    1], ...
+                        'holes_mobility',  [1e-6, 1]);
                     
                 case 'Impedance'
                     % EIS circuit parameters
@@ -86,6 +108,17 @@ classdef Parameters < handle
                     obj.params.r     = 100;    % Ohm   – series parasitic resistance
                     obj.params.R3    = 50;     % Ohm   – additional series resistance
                     obj.params.Rload = 500;    % Ohm   – fixed load (not fitted)
+
+                    obj.paramBounds = struct( ...
+                        'R0', [1e-3,  1e6], ...
+                        'L0', [1e-12, 1e-1], ...
+                        'C1', [1e-12, 1e-1], ...
+                        'R1', [1e-3,  1e6], ...
+                        'C2', [1e-12, 1e-1], ...
+                        'R2', [1e-3,  1e6], ...
+                        'A',  [1e-6,  1e8], ...
+                        'r',  [1e-3,  1e5], ...
+                        'R3', [0,     1e6]);
                     
                 otherwise
                     error('Unknown model type: %s', obj.modelType);
@@ -115,6 +148,33 @@ classdef Parameters < handle
                 value = obj.params.(name);
             else
                 error('Parameter "%s" not found', name);
+            end
+        end
+
+        function setParamBounds(obj, name, lb, ub)
+            % Set the user-configurable fitting range [lb, ub] for a
+            % single parameter. Used by the GUI to let users change the
+            % range of fitting for any parameter of any model.
+            if ~isfield(obj.params, name)
+                error('Parameter "%s" not found for model %s', name, obj.modelType);
+            end
+            lb = double(lb); ub = double(ub);
+            if ~isscalar(lb) || ~isscalar(ub) || ~isfinite(lb) || ~isfinite(ub)
+                error('Bounds for "%s" must be finite scalar values', name);
+            end
+            if lb >= ub
+                error('Lower bound must be less than upper bound for "%s"', name);
+            end
+            obj.paramBounds.(name) = [lb, ub];
+        end
+
+        function bounds = getParamBounds(obj, name)
+            % Return the [lb, ub] fitting range for a parameter, or an
+            % empty array if no bounds have been configured for it.
+            if isfield(obj.paramBounds, name)
+                bounds = obj.paramBounds.(name);
+            else
+                bounds = [];
             end
         end
         

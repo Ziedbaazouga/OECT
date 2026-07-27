@@ -40,6 +40,30 @@ classdef (Abstract) Model < handle
             end
         end
     end
+
+    methods (Access = protected)
+        function bounds = mergeUserBounds(obj, bounds)
+            %MERGEUSERBOUNDS  Override default parameter bounds with any
+            %   user-configured fitting range stored on obj.parameters
+            %   (e.g. set from the GUI's Min/Max columns), falling back to
+            %   the model's built-in defaults for any parameter left
+            %   unconfigured.
+            if isempty(obj.parameters) || ~isobject(obj.parameters) ...
+                    || ~isprop(obj.parameters, 'paramBounds')
+                return;
+            end
+            names = fieldnames(bounds);
+            for i = 1:numel(names)
+                name = names{i};
+                if isfield(obj.parameters.paramBounds, name)
+                    userBound = obj.parameters.paramBounds.(name);
+                    if numel(userBound) == 2 && all(isfinite(userBound)) && userBound(1) < userBound(2)
+                        bounds.(name) = userBound;
+                    end
+                end
+            end
+        end
+    end
     
     methods (Abstract)
         % Core simulation
