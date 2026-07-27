@@ -526,7 +526,7 @@ classdef BisquertModel < OECT.Model
 
             if isfield(ss,'sheetNames') && ~isempty(ss.sheetNames), steadySheets = ss.sheetNames;
             elseif isfield(ss,'sheets') && ~isempty(ss.sheets), steadySheets = ss.sheets;
-            else, [~, steadySheets] = xlsfinfo(steadyFile);
+            else, steadySheets = sheetnames(steadyFile);
             end
 
             if ischar(steadySheets), steadySheets = {steadySheets}; end

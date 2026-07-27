@@ -15,7 +15,7 @@ classdef DataLoader < handle
 
         function loadSteadyState(obj, file_name_steadystate, sheetnames_steadystate)
             if nargin < 3 || isempty(sheetnames_steadystate)
-                [~, sheetnames_steadystate] = xlsfinfo(file_name_steadystate);
+                sheetnames_steadystate = sheetnames(file_name_steadystate);
             end
             if isstring(sheetnames_steadystate), sheetnames_steadystate = cellstr(sheetnames_steadystate); end
 
