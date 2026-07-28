@@ -164,21 +164,14 @@ classdef TestSuite < handle
             Vg_range = linspace(obj.config.Vg_range(1), obj.config.Vg_range(2), obj.config.Vg_points);
             
             if isa(obj.model, 'OECT.ShirinskayaModel')
-                % Use steady-state calculation
-                d = obj.model.parameters.d;
-                L = obj.model.parameters.L;
-                W = obj.model.parameters.W;
-                sigma_inter = obj.model.sigma_inter;
-                
+                % Use steady-state calculation (via the model's public
+                % I_steady accessor; sigma_inter is a private property).
                 Id = zeros(length(Vg_range), length(obj.config.Vd_levels));
                 
                 for j = 1:length(obj.config.Vd_levels)
                     vds = obj.config.Vd_levels(j);
                     for i = 1:length(Vg_range)
-                        if abs(vds) > 1e-10
-                            Id(i, j) = -W * d * (1/L) * ...
-                                integral(sigma_inter, Vg_range(i), Vg_range(i) - vds);
-                        end
+                        Id(i, j) = obj.model.I_steady(Vg_range(i), vds);
                     end
                 end
             else
@@ -205,21 +198,13 @@ classdef TestSuite < handle
             Vd_range = linspace(obj.config.Vd_range(1), obj.config.Vd_range(2), obj.config.Vd_points);
             
             if isa(obj.model, 'OECT.ShirinskayaModel')
-                d = obj.model.parameters.d;
-                L = obj.model.parameters.L;
-                W = obj.model.parameters.W;
-                sigma_inter = obj.model.sigma_inter;
-                
                 Id = zeros(length(Vd_range), length(obj.config.Vg_levels));
                 
                 for j = 1:length(obj.config.Vg_levels)
                     vg = obj.config.Vg_levels(j);
                     for i = 1:length(Vd_range)
                         vd = Vd_range(i);
-                        if abs(vd) > 1e-10
-                            Id(i, j) = -W * d * (1/L) * ...
-                                integral(sigma_inter, vg, vg - vd);
-                        end
+                        Id(i, j) = obj.model.I_steady(vg, vd);
                     end
                 end
             else

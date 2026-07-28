@@ -28,7 +28,17 @@ classdef DataLoader < handle
             obj.steadyState.filePath = file_name_steadystate;
             obj.steadyState.sheetNames = sheetnames_steadystate;
             obj.steadyState.tables = tables;
-            obj.steadyState.parsed = [];   % old flow compatibility
+
+            % Parse the raw sheets into a Vg/Vd/Id grid (used by models such
+            % as OECT.ShirinskayaModel that need steady-state conductance
+            % reconstruction). Fall back to an empty-but-valid struct so
+            % that consumers can still safely use dot-indexing on it.
+            try
+                obj.steadyState.parsed = obj.parseSteadyStateBlocks(tables);
+            catch parseErr
+                obj.logger.warn('Could not parse steady-state blocks: %s', parseErr.message);
+                obj.steadyState.parsed = struct('Vg_sorted', [], 'Vd_sorted', [], 'Id_matrix', []);
+            end
             obj.logger.info('Steady-state data loaded successfully');
 
             obj.updateIsLoaded();
@@ -95,6 +105,98 @@ classdef DataLoader < handle
             %   and transient data have been read in.
             obj.isLoaded = isfield(obj.steadyState, 'tables') && ~isempty(obj.steadyState.tables) ...
                 && isfield(obj.transient, 'parsed') && ~isempty(obj.transient.parsed);
+        end
+
+        function parsed = parseSteadyStateBlocks(obj, tables)
+            %PARSESTEADYSTATEBLOCKS  Reconstruct a Vg/Vd/Id grid from the raw
+            %   steady-state sheets (5-column repeating blocks: DrainI,
+            %   DrainV, <unused>, GateV, <unused>), averaged across sheets.
+            nSheets = numel(tables);
+
+            d0 = obj.tableToNumeric(tables{1});
+            keep0 = any(isfinite(d0), 2);
+            d0 = d0(keep0, :);
+
+            [nr0, nc0] = size(d0);
+            nVd = min(9, floor((nc0 - 2)/5) + 1);
+            nVg = min(17, nr0);
+
+            if nVg < 5 || nVd < 3
+                error('Steady-state sheet format unsupported after header cleanup.');
+            end
+
+            gate_Voltage = nan(nVg, 1, nSheets);
+            drain_Voltage = nan(1, nVd, nSheets);
+            Id_meas_all = nan(nVg, nVd, nSheets);
+
+            for s = 1:nSheets
+                data = obj.tableToNumeric(tables{s});
+                keep = any(isfinite(data), 2);
+                data = data(keep, :);
+
+                [nr, nc] = size(data);
+                nVg_s = min(nVg, nr);
+                nVd_s = min(nVd, floor((nc - 2)/5) + 1);
+
+                for i = 0:(nVd_s-1)
+                    cI  = 1 + 5*i; % DrainI(i)
+                    cVd = 2 + 5*i; % DrainV(i)
+                    cVg = 4 + 5*i; % GateV(i)
+
+                    if cI <= nc
+                        Id_meas_all(1:nVg_s, i+1, s) = data(1:nVg_s, cI);
+                    end
+                    if cVd <= nc
+                        drain_Voltage(1, i+1, s) = data(1, cVd);
+                    end
+                    if cVg <= nc
+                        gate_Voltage(1:nVg_s, 1, s) = data(1:nVg_s, cVg);
+                    end
+                end
+            end
+
+            Vg_raw = mean(gate_Voltage, 3, 'omitnan');
+            Vd_raw = mean(drain_Voltage, 3, 'omitnan');
+            Id_raw = mean(Id_meas_all, 3, 'omitnan');
+
+            [Vg_sorted, idxVg] = sort(Vg_raw(:), 'ascend');
+            [Vd_sorted, idxVd] = sort(Vd_raw(:).', 'ascend');
+            Id_matrix = Id_raw(idxVg, idxVd);
+
+            parsed = struct('Vg_sorted', Vg_sorted, 'Vd_sorted', Vd_sorted, 'Id_matrix', Id_matrix);
+        end
+
+        function A = tableToNumeric(~, tbl)
+            nR = height(tbl);
+            nC = width(tbl);
+            A = nan(nR, nC);
+
+            for c = 1:nC
+                col = tbl.(c);
+
+                if isnumeric(col)
+                    A(:,c) = double(col);
+                elseif islogical(col)
+                    A(:,c) = double(col);
+                elseif isstring(col)
+                    A(:,c) = str2double(col);
+                elseif iscell(col)
+                    tmp = nan(nR,1);
+                    for r = 1:nR
+                        v = col{r};
+                        if isnumeric(v) && isscalar(v)
+                            tmp(r) = double(v);
+                        elseif islogical(v) && isscalar(v)
+                            tmp(r) = double(v);
+                        else
+                            tmp(r) = str2double(string(v));
+                        end
+                    end
+                    A(:,c) = tmp;
+                else
+                    A(:,c) = str2double(string(col));
+                end
+            end
         end
     end
 end

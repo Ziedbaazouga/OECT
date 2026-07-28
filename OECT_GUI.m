@@ -662,6 +662,10 @@ classdef OECT_GUI < matlab.apps.AppBase
                     fitResults = transientModel.fit(app.dataLoader);
                     app.parameters = transientModel.getParameters();
                     app.model = transientModel;
+
+                    % Plot fitted Transfer/Output characteristics in
+                    % standalone figures, same as the Impedance branch does.
+                    app.plotModelCharacteristics(transientModel);
                 end
 
                 app.updateParameterTable();
@@ -770,6 +774,43 @@ classdef OECT_GUI < matlab.apps.AppBase
                     app.NStartsLabel.Visible = 'off';
                     app.NStartsEdit.Visible  = 'off';
                 end
+            end
+        end
+
+        function plotModelCharacteristics(app, model)
+            %PLOTMODELCHARACTERISTICS  Show fitted Transfer/Output curves for
+            %   a Bisquert/Shirinskaya model in standalone figures, so a fit
+            %   always produces visible graphs (matching the Impedance path).
+            try
+                ax = app.getResultAxes('Transfer');
+                hold(ax, 'on');
+                Vd_levels = [-0.4, -0.2, 0.2, 0.4];
+                colors = lines(length(Vd_levels));
+                for j = 1:length(Vd_levels)
+                    [Vg, Id] = model.transferCharacteristics([], Vd_levels(j));
+                    plot(ax, Vg, Id * 1e3, 'LineWidth', 2, 'Color', colors(j,:), ...
+                        'DisplayName', sprintf('Vds=%.2fV', Vd_levels(j)));
+                end
+                xlabel(ax, 'V_{gs} (V)'); ylabel(ax, 'I_d (mA)'); title(ax, 'Transfer Characteristics (Fitted Model)');
+                legend(ax, 'Location', 'best', 'TextColor', [1,1,1]); grid(ax, 'on'); hold(ax, 'off');
+            catch ME
+                app.logger.warn('Could not plot transfer characteristics: %s', ME.message);
+            end
+
+            try
+                ax = app.getResultAxes('Output');
+                hold(ax, 'on');
+                Vg_levels = [-0.2, 0, 0.2];
+                colors = lines(length(Vg_levels));
+                for j = 1:length(Vg_levels)
+                    [Vd, Id] = model.outputCharacteristics(Vg_levels(j), []);
+                    plot(ax, Vd, Id * 1e3, 'LineWidth', 2, 'Color', colors(j,:), ...
+                        'DisplayName', sprintf('Vgs=%.2fV', Vg_levels(j)));
+                end
+                xlabel(ax, 'V_{ds} (V)'); ylabel(ax, 'I_d (mA)'); title(ax, 'Output Characteristics (Fitted Model)');
+                legend(ax, 'Location', 'best', 'TextColor', [1,1,1]); grid(ax, 'on'); hold(ax, 'off');
+            catch ME
+                app.logger.warn('Could not plot output characteristics: %s', ME.message);
             end
         end
 
