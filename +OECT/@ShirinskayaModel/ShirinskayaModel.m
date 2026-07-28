@@ -390,8 +390,8 @@ classdef ShirinskayaModel < OECT.Model
             [p_opt, ~, exitflag, output] = run(ms, problem, sp);
             
             info.exitflag = exitflag;
-            info.iterations = output.iterations;
             info.funcCount = output.funcCount;
+            info.localSolverTotal = output.localSolverTotal;
         end
         
         function [Id_fit, tau] = evaluateRC(obj, p, t, Vgs, Vds, gm_val, I0)

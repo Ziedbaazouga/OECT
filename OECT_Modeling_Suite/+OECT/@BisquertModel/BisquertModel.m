@@ -273,8 +273,8 @@ classdef BisquertModel < OECT.Model
             [p_opt, ~, exitflag, output] = run(gs, problem);
             
             info.exitflag = exitflag;
-            info.iterations = output.iterations;
             info.funcCount = output.funcCount;
+            info.localSolverTotal = output.localSolverTotal;
         end
         
         function [p_opt, info] = runLocalSearch(obj, objective, lb, ub, x0)

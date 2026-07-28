@@ -2,7 +2,7 @@ classdef TestSuite < handle
     %OECT.TESTSUITE Test suite runner
     
     properties (Access = private)
-        model OECT.Model
+        model OECT.Model = OECT.Model.empty
         logger OECT.Logger
         config struct
         results cell
