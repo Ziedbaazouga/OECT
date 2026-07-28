@@ -466,7 +466,14 @@ classdef BisquertModel < OECT.Model
             tau_e = (L^2)/(mu_p*v_mag);
             theta = sign(uds);
 
-            Meq_func = @(v) (2/3)*M0*(abs(v-uc)/VT)^(1.5);
+            % Dedoping charge M only accumulates once Vg crosses the
+            % threshold uc (consistent with the on_region_mask convention
+            % used in getSteadyStateConstantsEmbedded: Vg < uc is the
+            % undepleted "on" plateau). Using abs(v-uc) instead of
+            % max(v-uc,0) made M grow on both sides of uc, collapsing the
+            % simulated current to ~0 across most of the transfer/output
+            % sweep after fitting.
+            Meq_func = @(v) (2/3)*M0*(max(v-uc,0)/VT)^(1.5);
             M(1) = Meq_func(Vgs_initial);
 
             for i = 1:n
