@@ -1,13 +1,22 @@
 classdef ImpedanceModel < OECT.Model
     %OECT.IMPEDANCEMODEL  EIS impedance model for gate-source shorted OECT
     %
-    %  Circuit topology (gate-source shorted, 10 mM CaCl2):
+    %  Circuit topology (gate-source shorted, 10 mM CaCl2). R1/R2 branches
+    %  and the diffusion (Warburg-like) branch use Constant Phase Elements
+    %  (CPE) rather than ideal capacitors, since real electrolyte/polymer
+    %  interfaces produce depressed (non-ideal) arcs and a diffusion tail
+    %  that is rarely at a perfect 45 degree angle:
     %
-    %  Z = r + { [R2||(1/jwC2)] + [(1-j)*A/sqrt(w)] +
-    %            [R1||(1/jwC1)] + R3 + r }  ||  [R0 + jwL0 + r]  +  Rload
+    %  Z = r + { [R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] +
+    %            [R1||(1/(Q1*(jw)^n1))] + R3 + r }  ||  [R0 + jwL0 + r]  +  Rload
     %
-    %  Free parameters  : R0, L0, C1, R1, C2, R2, A, r, R3
+    %  Free parameters  : R0, L0, Q1, n1, R1, Q2, n2, R2, A, nW, r, R3
     %  Fixed parameters : Rload = 500 Ohm
+    %
+    %  n1, n2 are the CPE exponents of the two RC arcs (1 = ideal
+    %  capacitor, <1 = depressed/tilted arc). nW is the CPE exponent of
+    %  the diffusion branch (0.5 = ideal Warburg; deviations from 0.5
+    %  rotate the low-frequency tail, matching non-ideal diffusion).
     %
     %  Multi-start fitting uses Latin-Hypercube Sampling (LHS) to generate
     %  initial guesses and fmincon (with GlobalSearch when available) to
@@ -73,10 +82,10 @@ classdef ImpedanceModel < OECT.Model
             obj.logger.info('Starting EIS fit: %d points, %d starts', ...
                 length(frequencies), fitOptions.nStarts);
 
-            % Parameter bounds  [R0  L0   C1   R1   C2   R2   A    r    R3]
+            % Parameter bounds  [R0  L0  Q1  n1  R1  Q2  n2  R2  A  nW  r  R3]
             % (defaults, overridable per-parameter via obj.parameters.setParamBounds,
             % e.g. from the GUI's fitting-range columns)
-            paramOrder = {'R0','L0','C1','R1','C2','R2','A','r','R3'};
+            paramOrder = obj.getParameterNames();
             boundsStruct = obj.getParameterBounds();
             lb = zeros(1, numel(paramOrder));
             ub = zeros(1, numel(paramOrder));
@@ -232,23 +241,28 @@ classdef ImpedanceModel < OECT.Model
 
         function description = getModelDescription(obj)
             description = ['EIS impedance model for gate-source shorted OECT. ' ...
-                'Circuit: Z = r + {[R2||(1/jwC2)] + [(1-j)*A/sqrt(w)] + ' ...
-                '[R1||(1/jwC1)] + R3 + r} || [R0+jwL0+r] + Rload'];
+                'Circuit: Z = r + {[R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] + ' ...
+                '[R1||(1/(Q1*(jw)^n1))] + R3 + r} || [R0+jwL0+r] + Rload. ' ...
+                'R1/R2 arcs and the diffusion branch use Constant Phase ' ...
+                'Elements (CPE) to capture depressed/non-ideal (tilted) arcs.'];
         end
 
         function paramNames = getParameterNames(obj)
-            paramNames = {'R0','L0','C1','R1','C2','R2','A','r','R3'};
+            paramNames = {'R0','L0','Q1','n1','R1','Q2','n2','R2','A','nW','r','R3'};
         end
 
         function bounds = getParameterBounds(obj)
             bounds = struct( ...
                 'R0',  [1e-3, 1e6], ...
                 'L0',  [1e-12, 1e-1], ...
-                'C1',  [1e-12, 1e-1], ...
+                'Q1',  [1e-12, 1e-1], ...
+                'n1',  [0.3, 1.0], ...
                 'R1',  [1e-3, 1e6], ...
-                'C2',  [1e-12, 1e-1], ...
+                'Q2',  [1e-12, 1e-1], ...
+                'n2',  [0.3, 1.0], ...
                 'R2',  [1e-3, 1e6], ...
                 'A',   [1e-6, 1e8], ...
+                'nW',  [0.2, 0.8], ...
                 'r',   [1e-3, 1e5], ...
                 'R3',  [0, 1e6]);
             bounds = obj.mergeUserBounds(bounds);
@@ -327,7 +341,7 @@ classdef ImpedanceModel < OECT.Model
             fitResults.chiSquared = allResults{best_idx}.chiSquared;
 
             % Store in Parameters object
-            pNames = {'R0','L0','C1','R1','C2','R2','A','r','R3'};
+            pNames = obj.getParameterNames();
             for k = 1:length(pNames)
                 if isfield(obj.parameters.params, pNames{k})
                     obj.parameters.setParameter(pNames{k}, fitResults.bestParams(k));
@@ -346,10 +360,11 @@ classdef ImpedanceModel < OECT.Model
 
         function p = defaultParams(obj)
             prm = obj.parameters.params;
-            fNames = {'R0','L0','C1','R1','C2','R2','A','r','R3'};
-            defaults = [1000, 1e-6, 1e-6, 500, 1e-7, 2000, 1e4, 100, 50];
-            p = zeros(1,9);
-            for k = 1:9
+            fNames = obj.getParameterNames();
+            % [R0 L0 Q1 n1 R1 Q2 n2 R2 A nW r R3]
+            defaults = [1000, 1e-6, 1e-6, 0.9, 500, 1e-7, 0.9, 2000, 1e4, 0.5, 100, 50];
+            p = zeros(1, numel(fNames));
+            for k = 1:numel(fNames)
                 if isfield(prm, fNames{k})
                     p(k) = prm.(fNames{k});
                 else
@@ -359,8 +374,8 @@ classdef ImpedanceModel < OECT.Model
         end
 
         function logParameters(obj, p)
-            names    = {'R0','L0','C1','R1','C2','R2','A','r','R3'};
-            units    = {'Ohm','H','F','Ohm','F','Ohm','Ohm.s^-0.5','Ohm','Ohm'};
+            names    = obj.getParameterNames();
+            units    = {'Ohm','H','F.s^(n1-1)','-','Ohm','F.s^(n2-1)','-','Ohm','Ohm.s^-nW','-','Ohm','Ohm'};
             for k = 1:length(names)
                 obj.logger.info('  %s = %.4e %s', names{k}, p(k), units{k});
             end
@@ -376,17 +391,19 @@ classdef ImpedanceModel < OECT.Model
     methods (Static, Access = private)
         function Z = circuitImpedance(w_vec, p, Rload)
             %CIRCUITIMPEDANCE  Vectorised circuit evaluation.
-            %  p = [R0, L0, C1, R1, C2, R2, A, r, R3]
-            R0 = p(1); L0 = p(2); C1 = p(3); R1 = p(4);
-            C2 = p(5); R2 = p(6); A  = p(7); r  = p(8); R3 = p(9);
+            %  p = [R0, L0, Q1, n1, R1, Q2, n2, R2, A, nW, r, R3]
+            R0 = p(1); L0 = p(2); Q1 = p(3); n1 = p(4); R1 = p(5);
+            Q2 = p(6); n2 = p(7); R2 = p(8); A  = p(9); nW = p(10);
+            r  = p(11); R3 = p(12);
 
             w = w_vec(:);
+            jw = 1i * w;
 
-            Z_C1  = 1 ./ (1i * w * C1);
-            Z_C2  = 1 ./ (1i * w * C2);
-            Z_RC1 = (R1 .* Z_C1) ./ (R1 + Z_C1);   % R1 || C1
-            Z_RC2 = (R2 .* Z_C2) ./ (R2 + Z_C2);   % R2 || C2
-            Z_W   = (1 - 1i) * A ./ sqrt(w);        % Warburg
+            Z_Q1  = 1 ./ (Q1 .* jw.^n1);           % CPE 1 (replaces ideal C1)
+            Z_Q2  = 1 ./ (Q2 .* jw.^n2);           % CPE 2 (replaces ideal C2)
+            Z_RC1 = (R1 .* Z_Q1) ./ (R1 + Z_Q1);   % R1 || CPE1
+            Z_RC2 = (R2 .* Z_Q2) ./ (R2 + Z_Q2);   % R2 || CPE2
+            Z_W   = A ./ jw.^nW;                    % generalised (non-ideal) Warburg/CPE
 
             Z_arm1 = Z_RC2 + Z_W + Z_RC1 + R3 + r; % ionic/channel arm
             Z_arm2 = R0 + 1i * w * L0 + r;          % inductive arm
