@@ -153,8 +153,21 @@ classdef ShirinskayaModel < OECT.Model
             [conductance.sigma, conductance.Vg_lookup, conductance.max] = ...
                 obj.reconstructSigma(parsed, d, L, W);
             
-            obj.Vg_lookup = conductance.Vg_lookup;
-            obj.sigma_inter = @(Vg) interp1(conductance.Vg_lookup, conductance.sigma, Vg, 'pchip', 'extrap');
+            % Build the transconductance interpolant (gm_inter) used by
+            % fitSingleFile. Without this, gm_inter stays [] (its default
+            % value) and obj.gm_inter(Vgs, Vds) is treated as array
+            % indexing instead of a function call, throwing "Index in
+            % position 1 is invalid. Array indices must be positive
+            % integers or logical values."
+            Vg_vals = parsed.Vg_sorted;
+            Vd_vals = parsed.Vd_sorted;
+            gm = zeros(numel(Vg_vals), numel(Vd_vals));
+            for j = 1:numel(Vd_vals)
+                gm(:, j) = gradient(parsed.Id_matrix(:, j), Vg_vals);
+            end
+            gm(~isfinite(gm)) = 0;
+            
+            obj.buildInterpolants(conductance.sigma, conductance.Vg_lookup, Vg_vals, Vd_vals, gm);
         end
         
         function [sigma, Vg_lookup, sigma_max] = reconstructSigma(obj, parsed, d, L, W)
