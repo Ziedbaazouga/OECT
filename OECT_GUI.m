@@ -737,6 +737,10 @@ classdef OECT_GUI < matlab.apps.AppBase
             if isKey(app.resultAxes, name) && isvalid(app.resultAxes(name))
                 ax = app.resultAxes(name);
                 cla(ax);
+                % Keep NextPlot in 'add' mode so the first plot()/semilogx()
+                % call issued by the caller does not silently reset the
+                % dark-theme axis colors back to their (invisible) defaults.
+                hold(ax, 'on');
                 figure(ancestor(ax, 'figure'));
                 return;
             end
@@ -747,6 +751,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             ax.YColor = [0.9, 0.9, 0.9];
             ax.GridColor = [0.4, 0.4, 0.4];
             ax.FontSize = 11;
+            hold(ax, 'on');
             app.resultAxes(name) = ax;
         end
 
