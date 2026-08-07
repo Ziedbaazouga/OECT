@@ -53,6 +53,11 @@ classdef Parameters < handle
         function obj = Parameters(modelType)
             % Constructor
             if nargin > 0
+                if strcmp(modelType, 'Impedance')
+                    % Backward-compatible alias: the plain 'Impedance' type
+                    % now refers to the default (GS shortcut) EIS circuit.
+                    modelType = 'Impedance_GS';
+                end
                 obj.modelType = modelType;
             end
             obj.metadata.fitDate = datestr(now);
@@ -94,8 +99,8 @@ classdef Parameters < handle
                         'f',               [0,    1], ...
                         'holes_mobility',  [1e-6, 1]);
                     
-                case 'Impedance'
-                    % EIS circuit parameters
+                case 'Impedance_GS'
+                    % EIS circuit parameters – Impedance (GS shortcut)
                     % Z = r + {[R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] +
                     %          [R1||(1/(Q1*(jw)^n1))] + R3 + r} || [R0+jwL0+r] + Rload
                     obj.params.R0    = 1e3;    % Ohm   – channel/inductive arm resistance
@@ -125,7 +130,45 @@ classdef Parameters < handle
                         'nW', [0.2,   0.8], ...
                         'r',  [1e-3,  1e5], ...
                         'R3', [0,     1e6]);
-                    
+
+                case 'Impedance_SD'
+                    % EIS circuit parameters – Impedance (Source to Drain)
+                    % Z = 2*r + [(jwL0+R0) || R1 || (1/(jwC1))]
+                    obj.params.r  = 100;    % Ohm – series parasitic resistance (x2)
+                    obj.params.R0 = 1e3;    % Ohm – channel/inductive arm resistance
+                    obj.params.L0 = 1e-6;   % H   – parasitic inductance
+                    obj.params.R1 = 500;    % Ohm – channel resistance
+                    obj.params.C1 = 1e-6;   % F   – double-layer capacitance
+
+                    obj.paramBounds = struct( ...
+                        'r',  [1e-3,  1e5], ...
+                        'R0', [1e-3,  1e6], ...
+                        'L0', [1e-12, 1e-1], ...
+                        'R1', [1e-3,  1e6], ...
+                        'C1', [1e-12, 1e-1]);
+
+                case 'Impedance_SDShort'
+                    % EIS circuit parameters – Impedance (SD shortcut)
+                    % Z = R3 + [R1||(1/(jwC1))] + [1/(Q0*(jw)^n)] + r + [R2||(1/(jwC2))]
+                    obj.params.R3 = 50;     % Ohm       – series resistance
+                    obj.params.R1 = 500;    % Ohm       – first RC pair resistance
+                    obj.params.C1 = 1e-6;   % F         – first RC pair capacitance
+                    obj.params.Q0 = 1e-6;   % F.s^(n-1) – CPE coefficient
+                    obj.params.n  = 0.9;    % -         – CPE exponent (1 = ideal C)
+                    obj.params.r  = 100;    % Ohm       – series parasitic resistance
+                    obj.params.R2 = 2e3;    % Ohm       – second RC pair resistance
+                    obj.params.C2 = 1e-6;   % F         – second RC pair capacitance
+
+                    obj.paramBounds = struct( ...
+                        'R3', [0,     1e6], ...
+                        'R1', [1e-3,  1e6], ...
+                        'C1', [1e-12, 1e-1], ...
+                        'Q0', [1e-12, 1e-1], ...
+                        'n',  [0.3,   1.0], ...
+                        'r',  [1e-3,  1e5], ...
+                        'R2', [1e-3,  1e6], ...
+                        'C2', [1e-12, 1e-1]);
+
                 otherwise
                     error('Unknown model type: %s', obj.modelType);
             end
@@ -217,7 +260,7 @@ classdef Parameters < handle
                     obj.validateParam('f', 0, 1);
                     obj.validateParam('holes_mobility', 1e-6, 1);
 
-                case 'Impedance'
+                case 'Impedance_GS'
                     obj.validateParam('R0',    1e-3, 1e6);
                     obj.validateParam('L0',    1e-12, 1e-1);
                     obj.validateParam('Q1',    1e-12, 1e-1);
@@ -231,6 +274,23 @@ classdef Parameters < handle
                     obj.validateParam('r',     1e-3, 1e5);
                     obj.validateParam('R3',    0, 1e6);
                     obj.validateParam('Rload', 0, 1e6);
+
+                case 'Impedance_SD'
+                    obj.validateParam('r',  1e-3, 1e5);
+                    obj.validateParam('R0', 1e-3, 1e6);
+                    obj.validateParam('L0', 1e-12, 1e-1);
+                    obj.validateParam('R1', 1e-3, 1e6);
+                    obj.validateParam('C1', 1e-12, 1e-1);
+
+                case 'Impedance_SDShort'
+                    obj.validateParam('R3', 0, 1e6);
+                    obj.validateParam('R1', 1e-3, 1e6);
+                    obj.validateParam('C1', 1e-12, 1e-1);
+                    obj.validateParam('Q0', 1e-12, 1e-1);
+                    obj.validateParam('n',  0, 1);
+                    obj.validateParam('r',  1e-3, 1e5);
+                    obj.validateParam('R2', 1e-3, 1e6);
+                    obj.validateParam('C2', 1e-12, 1e-1);
             end
             
             % Validate geometry
