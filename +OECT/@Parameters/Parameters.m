@@ -133,13 +133,15 @@ classdef Parameters < handle
 
                 case 'Impedance_SD'
                     % EIS circuit parameters – Impedance (Source to Drain)
-                    % Z = r + 1/(Q1*(jw)^n1)
+                    % Z = r + [R1||(1/(Q1*(jw)^n1))]
                     obj.params.r  = 100;    % Ohm – series parasitic resistance
+                    obj.params.R1 = 500;    % Ohm – double-layer parallel resistance
                     obj.params.Q1 = 1e-6;   % F.s^(n1-1) – double-layer CPE coefficient
                     obj.params.n1 = 0.9;    % -   – double-layer CPE exponent (1 = ideal C)
 
                     obj.paramBounds = struct( ...
                         'r',  [1e-3,  1e5], ...
+                        'R1', [1e-3,  1e6], ...
                         'Q1', [1e-12, 1e-1], ...
                         'n1', [0.3,   1.0]);
 
@@ -271,6 +273,7 @@ classdef Parameters < handle
 
                 case 'Impedance_SD'
                     obj.validateParam('r',  1e-3, 1e5);
+                    obj.validateParam('R1', 1e-3, 1e6);
                     obj.validateParam('Q1', 1e-12, 1e-1);
                     obj.validateParam('n1', 0, 1);
 
