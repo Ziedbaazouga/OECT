@@ -1,22 +1,21 @@
 classdef ImpedanceModel < OECT.Model
     %OECT.IMPEDANCEMODEL  EIS impedance model for gate-source shorted OECT
     %
-    %  Circuit topology (gate-source shorted, 10 mM CaCl2). R1/R2 branches
-    %  and the diffusion (Warburg-like) branch use Constant Phase Elements
-    %  (CPE) rather than ideal capacitors, since real electrolyte/polymer
-    %  interfaces produce depressed (non-ideal) arcs and a diffusion tail
-    %  that is rarely at a perfect 45 degree angle:
+    %  Circuit topology (gate-source shorted, 10 mM CaCl2). A single
+    %  dominant R||CPE branch (rather than two separate RC-CPE arcs plus
+    %  a distinct diffusion/Warburg-like element) is used in series with
+    %  r/R3, since the measured Bode response shows one continuous,
+    %  monotonic dispersive relaxation across the whole measured band
+    %  (a smooth, ever-flattening magnitude roll-off and a quasi-constant
+    %  phase slope), not multiple resolvable arcs:
     %
-    %  Z = r + { [R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] +
-    %            [R1||(1/(Q1*(jw)^n1))] + R3 + r }  ||  [R0 + jwL0 + r]  +  Rload
+    %  Z = r + { [R1||(1/(Q1*(jw)^n1))] + R3 + r }  ||  [R0 + jwL0 + r]  +  Rload
     %
-    %  Free parameters  : R0, L0, Q1, n1, R1, Q2, n2, R2, A, nW, r, R3
+    %  Free parameters  : R0, L0, Q1, n1, R1, r, R3
     %  Fixed parameters : Rload = 500 Ohm
     %
-    %  n1, n2 are the CPE exponents of the two RC arcs (1 = ideal
-    %  capacitor, <1 = depressed/tilted arc). nW is the CPE exponent of
-    %  the diffusion branch (0.5 = ideal Warburg; deviations from 0.5
-    %  rotate the low-frequency tail, matching non-ideal diffusion).
+    %  n1 is the CPE exponent of the dominant R||CPE branch (1 = ideal
+    %  capacitor, <1 = depressed/tilted, non-ideal dispersive response).
     %
     %  Multi-start fitting uses Latin-Hypercube Sampling (LHS) to generate
     %  initial guesses and fmincon (with GlobalSearch when available) to
@@ -138,7 +137,7 @@ classdef ImpedanceModel < OECT.Model
         % ----------------------------------------------------------------
         function Z = computeImpedanceVec(obj, w_vec, p)
             %COMPUTEIMPEDANCEVEC  Vectorised circuit impedance.
-            %  p = [R0 L0 C1 R1 C2 R2 A r R3]
+            %  p = [R0 L0 Q1 n1 R1 r R3]
             Z = OECT.ImpedanceModel.circuitImpedance(w_vec, p, obj.Rload);
         end
 
@@ -241,14 +240,15 @@ classdef ImpedanceModel < OECT.Model
 
         function description = getModelDescription(obj)
             description = ['EIS impedance model for gate-source shorted OECT. ' ...
-                'Circuit: Z = r + {[R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] + ' ...
-                '[R1||(1/(Q1*(jw)^n1))] + R3 + r} || [R0+jwL0+r] + Rload. ' ...
-                'R1/R2 arcs and the diffusion branch use Constant Phase ' ...
-                'Elements (CPE) to capture depressed/non-ideal (tilted) arcs.'];
+                'Circuit: Z = r + {[R1||(1/(Q1*(jw)^n1))] + R3 + r} || ' ...
+                '[R0+jwL0+r] + Rload. A single dominant R||CPE branch ' ...
+                '(rather than two separate RC-CPE arcs plus a Warburg-like ' ...
+                'diffusion term) captures the one continuous, monotonic ' ...
+                'dispersive relaxation seen across the whole measured band.'];
         end
 
         function paramNames = getParameterNames(obj)
-            paramNames = {'R0','L0','Q1','n1','R1','Q2','n2','R2','A','nW','r','R3'};
+            paramNames = {'R0','L0','Q1','n1','R1','r','R3'};
         end
 
         function bounds = getParameterBounds(obj)
@@ -258,11 +258,6 @@ classdef ImpedanceModel < OECT.Model
                 'Q1',  [1e-12, 1e-1], ...
                 'n1',  [0.3, 1.0], ...
                 'R1',  [1e-3, 1e6], ...
-                'Q2',  [1e-12, 1e-1], ...
-                'n2',  [0.3, 1.0], ...
-                'R2',  [1e-3, 1e6], ...
-                'A',   [1e-6, 1e8], ...
-                'nW',  [0.2, 0.8], ...
                 'r',   [1e-3, 1e5], ...
                 'R3',  [0, 1e6]);
             bounds = obj.mergeUserBounds(bounds);
@@ -361,8 +356,8 @@ classdef ImpedanceModel < OECT.Model
         function p = defaultParams(obj)
             prm = obj.parameters.params;
             fNames = obj.getParameterNames();
-            % [R0 L0 Q1 n1 R1 Q2 n2 R2 A nW r R3]
-            defaults = [1000, 1e-6, 1e-6, 0.9, 500, 1e-7, 0.9, 2000, 1e4, 0.5, 100, 50];
+            % [R0 L0 Q1 n1 R1 r R3]
+            defaults = [1000, 1e-6, 1e-6, 0.9, 500, 100, 50];
             p = zeros(1, numel(fNames));
             for k = 1:numel(fNames)
                 if isfield(prm, fNames{k})
@@ -375,7 +370,7 @@ classdef ImpedanceModel < OECT.Model
 
         function logParameters(obj, p)
             names    = obj.getParameterNames();
-            units    = {'Ohm','H','F.s^(n1-1)','-','Ohm','F.s^(n2-1)','-','Ohm','Ohm.s^-nW','-','Ohm','Ohm'};
+            units    = {'Ohm','H','F.s^(n1-1)','-','Ohm','Ohm','Ohm'};
             for k = 1:length(names)
                 obj.logger.info('  %s = %.4e %s', names{k}, p(k), units{k});
             end
@@ -391,21 +386,17 @@ classdef ImpedanceModel < OECT.Model
     methods (Static, Access = private)
         function Z = circuitImpedance(w_vec, p, Rload)
             %CIRCUITIMPEDANCE  Vectorised circuit evaluation.
-            %  p = [R0, L0, Q1, n1, R1, Q2, n2, R2, A, nW, r, R3]
+            %  p = [R0, L0, Q1, n1, R1, r, R3]
             R0 = p(1); L0 = p(2); Q1 = p(3); n1 = p(4); R1 = p(5);
-            Q2 = p(6); n2 = p(7); R2 = p(8); A  = p(9); nW = p(10);
-            r  = p(11); R3 = p(12);
+            r  = p(6); R3 = p(7);
 
             w = w_vec(:);
             jw = 1i * w;
 
-            Z_Q1  = 1 ./ (Q1 .* jw.^n1);           % CPE 1 (replaces ideal C1)
-            Z_Q2  = 1 ./ (Q2 .* jw.^n2);           % CPE 2 (replaces ideal C2)
+            Z_Q1  = 1 ./ (Q1 .* jw.^n1);           % single dominant CPE (replaces ideal C)
             Z_RC1 = (R1 .* Z_Q1) ./ (R1 + Z_Q1);   % R1 || CPE1
-            Z_RC2 = (R2 .* Z_Q2) ./ (R2 + Z_Q2);   % R2 || CPE2
-            Z_W   = A ./ jw.^nW;                    % generalised (non-ideal) Warburg/CPE
 
-            Z_arm1 = Z_RC2 + Z_W + Z_RC1 + R3 + r; % ionic/channel arm
+            Z_arm1 = Z_RC1 + R3 + r;               % ionic/channel arm
             Z_arm2 = R0 + 1i * w * L0 + r;          % inductive arm
 
             Z_par = (Z_arm1 .* Z_arm2) ./ (Z_arm1 + Z_arm2);

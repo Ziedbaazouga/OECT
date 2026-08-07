@@ -96,18 +96,12 @@ classdef Parameters < handle
                     
                 case 'Impedance'
                     % EIS circuit parameters
-                    % Z = r + {[R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] +
-                    %          [R1||(1/(Q1*(jw)^n1))] + R3 + r} || [R0+jwL0+r] + Rload
+                    % Z = r + {[R1||(1/(Q1*(jw)^n1))] + R3 + r} || [R0+jwL0+r] + Rload
                     obj.params.R0    = 1e3;    % Ohm   – channel/inductive arm resistance
                     obj.params.L0    = 1e-6;   % H     – parasitic inductance
-                    obj.params.Q1    = 1e-6;   % F.s^(n1-1) – double-layer CPE coefficient
-                    obj.params.n1    = 0.9;    % -     – double-layer CPE exponent (1 = ideal C)
-                    obj.params.R1    = 500;    % Ohm   – first RC pair resistance
-                    obj.params.Q2    = 1e-7;   % F.s^(n2-1) – bulk ionic CPE coefficient
-                    obj.params.n2    = 0.9;    % -     – bulk ionic CPE exponent (1 = ideal C)
-                    obj.params.R2    = 2e3;    % Ohm   – second RC pair resistance
-                    obj.params.A     = 1e4;    % Ohm.s^-nW – diffusion (Warburg-like) coefficient
-                    obj.params.nW    = 0.5;    % -     – diffusion CPE exponent (0.5 = ideal Warburg)
+                    obj.params.Q1    = 1e-6;   % F.s^(n1-1) – dominant CPE coefficient
+                    obj.params.n1    = 0.9;    % -     – dominant CPE exponent (1 = ideal C)
+                    obj.params.R1    = 500;    % Ohm   – RC pair resistance
                     obj.params.r     = 100;    % Ohm   – series parasitic resistance
                     obj.params.R3    = 50;     % Ohm   – additional series resistance
                     obj.params.Rload = 500;    % Ohm   – fixed load (not fitted)
@@ -118,11 +112,6 @@ classdef Parameters < handle
                         'Q1', [1e-12, 1e-1], ...
                         'n1', [0.3,   1.0], ...
                         'R1', [1e-3,  1e6], ...
-                        'Q2', [1e-12, 1e-1], ...
-                        'n2', [0.3,   1.0], ...
-                        'R2', [1e-3,  1e6], ...
-                        'A',  [1e-6,  1e8], ...
-                        'nW', [0.2,   0.8], ...
                         'r',  [1e-3,  1e5], ...
                         'R3', [0,     1e6]);
                     
@@ -223,11 +212,6 @@ classdef Parameters < handle
                     obj.validateParam('Q1',    1e-12, 1e-1);
                     obj.validateParam('n1',    0, 1);
                     obj.validateParam('R1',    1e-3, 1e6);
-                    obj.validateParam('Q2',    1e-12, 1e-1);
-                    obj.validateParam('n2',    0, 1);
-                    obj.validateParam('R2',    1e-3, 1e6);
-                    obj.validateParam('A',     1e-6, 1e8);
-                    obj.validateParam('nW',    0, 1);
                     obj.validateParam('r',     1e-3, 1e5);
                     obj.validateParam('R3',    0, 1e6);
                     obj.validateParam('Rload', 0, 1e6);
