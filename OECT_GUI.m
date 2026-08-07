@@ -223,7 +223,9 @@ classdef OECT_GUI < matlab.apps.AppBase
         function populateDropdowns(app)
             app.ModelDropdown.Items = {'Bisquert (Ionic Dynamics)', ...
                                        'Shirinskaya (PNP + RC)', ...
-                                       'Impedance (EIS Fitting)'};
+                                       'Impedance (GS shortcut)', ...
+                                       'Impedance (Source to Drain)', ...
+                                       'Impedance (SD shortcut)'};
             app.ModelDropdown.Value = 'Bisquert (Ionic Dynamics)';
         end
 
@@ -623,7 +625,14 @@ classdef OECT_GUI < matlab.apps.AppBase
                     if isempty(app.eisData) || ~isfield(app.eisData, 'frequency')
                         error('Please load EIS data first');
                     end
-                    eisModel = OECT.ImpedanceModel(app.parameters);
+                    switch app.getImpedanceCircuitType()
+                        case 'SD'
+                            eisModel = OECT.ImpedanceSDModel(app.parameters);
+                        case 'SDShort'
+                            eisModel = OECT.ImpedanceSDShortModel(app.parameters);
+                        otherwise
+                            eisModel = OECT.ImpedanceGSModel(app.parameters);
+                    end
 
                     nStarts = 50;
                     if ~isempty(app.NStartsEdit) && isvalid(app.NStartsEdit)
@@ -723,6 +732,29 @@ classdef OECT_GUI < matlab.apps.AppBase
             if contains(value, 'Bisquert'), modelType = 'Bisquert';
             elseif contains(value, 'Shirinskaya'), modelType = 'Shirinskaya';
             else, modelType = 'Impedance';
+            end
+        end
+
+        function circuitType = getImpedanceCircuitType(app)
+            %GETIMPEDANCECIRCUITTYPE  Which impedance circuit topology is
+            %   currently selected: 'GS' (gate-source shortcut, default),
+            %   'SD' (source-to-drain) or 'SDShort' (SD shortcut).
+            value = app.ModelDropdown.Value;
+            if contains(value, 'Source to Drain'), circuitType = 'SD';
+            elseif contains(value, 'SD shortcut'), circuitType = 'SDShort';
+            else, circuitType = 'GS';
+            end
+        end
+
+        function paramsModelType = getParametersModelType(app)
+            %GETPARAMETERSMODELTYPE  Model type string to pass to
+            %   OECT.Parameters(), disambiguating the three impedance
+            %   circuit variants sharing the 'Impedance' family.
+            modelType = app.getModelType();
+            if strcmp(modelType, 'Impedance')
+                paramsModelType = ['Impedance_' app.getImpedanceCircuitType()];
+            else
+                paramsModelType = modelType;
             end
         end
 
@@ -860,7 +892,7 @@ classdef OECT_GUI < matlab.apps.AppBase
             %   Called as soon as a model is chosen or data is loaded, so the
             %   panel is populated (not left empty/grey) before fitting.
             try
-                modelType = app.getModelType();
+                modelType = app.getParametersModelType();
                 geometry.d = app.dEdit.Value;
                 geometry.L = app.LEdit.Value;
                 geometry.W = app.WEdit.Value;
@@ -1301,7 +1333,9 @@ classdef OECT_GUI < matlab.apps.AppBase
             app.ModelDropdown = uidropdown(app.ModelGrid, ...
                 'Items', {'Bisquert (Ionic Dynamics)', ...
                          'Shirinskaya (PNP + RC)', ...
-                         'Impedance (EIS Fitting)'}, ...
+                         'Impedance (GS shortcut)', ...
+                         'Impedance (Source to Drain)', ...
+                         'Impedance (SD shortcut)'}, ...
                 'Value', 'Bisquert (Ionic Dynamics)', ...
                 'BackgroundColor', [0.25, 0.25, 0.25], ...
                 'FontColor', [1, 1, 1], ...

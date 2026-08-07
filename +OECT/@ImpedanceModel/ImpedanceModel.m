@@ -1,28 +1,23 @@
-classdef ImpedanceModel < OECT.Model
-    %OECT.IMPEDANCEMODEL  EIS impedance model for gate-source shorted OECT
+classdef (Abstract) ImpedanceModel < OECT.Model
+    %OECT.IMPEDANCEMODEL  Abstract base class for EIS circuit impedance models.
     %
-    %  Circuit topology (gate-source shorted, 10 mM CaCl2). R1/R2 branches
-    %  and the diffusion (Warburg-like) branch use Constant Phase Elements
-    %  (CPE) rather than ideal capacitors, since real electrolyte/polymer
-    %  interfaces produce depressed (non-ideal) arcs and a diffusion tail
-    %  that is rarely at a perfect 45 degree angle:
+    %  Holds the multi-start fitting engine (Latin-Hypercube Sampling +
+    %  fmincon, polished with lsqnonlin) and the Nyquist/Bode/Residuals
+    %  plotting infrastructure shared by every equivalent-circuit topology
+    %  used to fit gate-source-shorted EIS data. Concrete subclasses only
+    %  need to supply the circuit equation and parameter set:
     %
-    %  Z = r + { [R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] +
-    %            [R1||(1/(Q1*(jw)^n1))] + R3 + r }  ||  [R0 + jwL0 + r]  +  Rload
-    %
-    %  Free parameters  : R0, L0, Q1, n1, R1, Q2, n2, R2, A, nW, r, R3
-    %  Fixed parameters : Rload = 500 Ohm
-    %
-    %  n1, n2 are the CPE exponents of the two RC arcs (1 = ideal
-    %  capacitor, <1 = depressed/tilted arc). nW is the CPE exponent of
-    %  the diffusion branch (0.5 = ideal Warburg; deviations from 0.5
-    %  rotate the low-frequency tail, matching non-ideal diffusion).
-    %
-    %  Multi-start fitting uses Latin-Hypercube Sampling (LHS) to generate
-    %  initial guesses and fmincon (with GlobalSearch when available) to
-    %  minimise a weighted complex-impedance residual.
-    
-    properties (Access = private)
+    %    OECT.ImpedanceGSModel      - Impedance (GS shortcut)
+    %                                 Z = r + {[R2||(1/(Q2*(jw)^n2))] +
+    %                                 [A/(jw)^nW] + [R1||(1/(Q1*(jw)^n1))] +
+    %                                 R3 + r} || [R0+jwL0+r] + Rload
+    %    OECT.ImpedanceSDModel      - Impedance (Source to Drain)
+    %                                 Z = 2*r + [(jwL0+R0)||R1||(1/jwC1)]
+    %    OECT.ImpedanceSDShortModel - Impedance (SD shortcut)
+    %                                 Z = R3+[R1||1/(jwC1)]+[1/(Q0*(jw)^n)]+
+    %                                 r+[R2||1/(jwC2)]
+
+    properties (Access = protected)
         Rload double = 500          % fixed load resistance (Ohm)
         eisData struct = struct()   % last loaded EIS data
     end
@@ -31,11 +26,11 @@ classdef ImpedanceModel < OECT.Model
     methods
         function obj = ImpedanceModel(parameters)
             if nargin < 1
-                parameters = OECT.Parameters('Impedance');
+                parameters = OECT.Parameters('Impedance_GS');
             end
             obj@OECT.Model(parameters);
-            obj.modelName = 'Impedance';
-            obj.logger = OECT.Logger('ImpedanceModel');
+            obj.logger = OECT.Logger(class(obj));
+            obj.modelName = obj.getModelName();
         end
 
         % ----------------------------------------------------------------
@@ -43,7 +38,7 @@ classdef ImpedanceModel < OECT.Model
         % ----------------------------------------------------------------
         function sim = simulate(obj, Vg, t, Vds)
             %SIMULATE  Stub – not meaningful for an EIS-only model.
-            obj.logger.warn('simulate() is not implemented for the impedance model');
+            obj.logger.warn('simulate() is not implemented for impedance models');
             t   = t(:);  Vg = Vg(:);
             n   = length(t);
             Vds = Vds * ones(n,1);
@@ -54,7 +49,7 @@ classdef ImpedanceModel < OECT.Model
         end
 
         function fitResults = fit(obj, eisData, fitOptions)
-            %FIT  Multi-start EIS fitting.
+            %FIT  Multi-start EIS fitting (shared by every circuit topology).
             %
             %  fitResults = obj.fit(eisData)
             %  fitResults = obj.fit(eisData, fitOptions)
@@ -82,9 +77,10 @@ classdef ImpedanceModel < OECT.Model
             obj.logger.info('Starting EIS fit: %d points, %d starts', ...
                 length(frequencies), fitOptions.nStarts);
 
-            % Parameter bounds  [R0  L0  Q1  n1  R1  Q2  n2  R2  A  nW  r  R3]
-            % (defaults, overridable per-parameter via obj.parameters.setParamBounds,
-            % e.g. from the GUI's fitting-range columns)
+            % Parameter bounds (order given by obj.getParameterNames(); the
+            % defaults below are overridable per-parameter via
+            % obj.parameters.setParamBounds, e.g. from the GUI's fitting
+            % range columns)
             paramOrder = obj.getParameterNames();
             boundsStruct = obj.getParameterBounds();
             lb = zeros(1, numel(paramOrder));
@@ -101,19 +97,24 @@ classdef ImpedanceModel < OECT.Model
             allResults = cell(fitOptions.nStarts, 1);
             bestR2     = -Inf;
 
+            % Bind the concrete circuit equation (a Static method resolved
+            % on the subclass) into a plain function handle, so the
+            % fitting engine below stays circuit-agnostic and parfor-safe.
+            modelClass = class(obj);
+            Rload_val  = obj.Rload;
+            circuitFcn = @(w_vec_, p) feval([modelClass '.circuitImpedance'], w_vec_, p, Rload_val);
+
             if fitOptions.useParallel && obj.canUseParallel()
                 obj.logger.info('Using parallel processing');
-                % parallel loop – capture variables needed inside parfor
-                Rload_val = obj.Rload;
                 parfor s = 1:fitOptions.nStarts
                     allResults{s} = OECT.ImpedanceModel.fitSingleStart( ...
-                        guesses(s,:), lb, ub, w_vec, Z_meas, Rload_val, fitOptions);
+                        guesses(s,:), lb, ub, w_vec, Z_meas, circuitFcn, fitOptions);
                 end
             else
                 for s = 1:fitOptions.nStarts
                     obj.checkStop();
                     allResults{s} = OECT.ImpedanceModel.fitSingleStart( ...
-                        guesses(s,:), lb, ub, w_vec, Z_meas, obj.Rload, fitOptions);
+                        guesses(s,:), lb, ub, w_vec, Z_meas, circuitFcn, fitOptions);
 
                     if allResults{s}.success && allResults{s}.R2 > bestR2
                         bestR2 = allResults{s}.R2;
@@ -128,7 +129,7 @@ classdef ImpedanceModel < OECT.Model
                 end
             end
 
-            fitResults = obj.aggregateFits(allResults, w_vec, Z_meas);
+            fitResults = obj.aggregateFits(allResults, w_vec, Z_meas, circuitFcn);
             obj.logger.info('Fit complete. R2 = %.4f (best of %d starts)', ...
                 fitResults.avgR2, fitOptions.nStarts);
         end
@@ -137,9 +138,9 @@ classdef ImpedanceModel < OECT.Model
         %  IMPEDANCE CALCULATION
         % ----------------------------------------------------------------
         function Z = computeImpedanceVec(obj, w_vec, p)
-            %COMPUTEIMPEDANCEVEC  Vectorised circuit impedance.
-            %  p = [R0 L0 C1 R1 C2 R2 A r R3]
-            Z = OECT.ImpedanceModel.circuitImpedance(w_vec, p, obj.Rload);
+            %COMPUTEIMPEDANCEVEC  Vectorised circuit impedance (dispatches
+            %  to the concrete subclass's circuitImpedance implementation).
+            Z = obj.circuitImpedance(w_vec, p, obj.Rload);
         end
 
         % ----------------------------------------------------------------
@@ -158,7 +159,7 @@ classdef ImpedanceModel < OECT.Model
             if nargin >= 4 && ~isempty(fitResults) && isfield(fitResults, 'bestParams')
                 p    = fitResults.bestParams;
                 w_f  = 2*pi*eisData.frequency;
-                Z_fit = OECT.ImpedanceModel.circuitImpedance(w_f, p, obj.Rload);
+                Z_fit = obj.computeImpedanceVec(w_f, p);
                 plot(ax, real(Z_fit), -imag(Z_fit), '-', ...
                     'LineWidth', 1.5, 'Color', [1 0.4 0.1], 'DisplayName', 'Fit');
             end
@@ -197,7 +198,7 @@ classdef ImpedanceModel < OECT.Model
             if nargin >= 5 && ~isempty(fitResults) && isfield(fitResults, 'bestParams')
                 p    = fitResults.bestParams;
                 w_f  = 2*pi*freq;
-                Z_fit = OECT.ImpedanceModel.circuitImpedance(w_f, p, obj.Rload);
+                Z_fit = obj.computeImpedanceVec(w_f, p);
                 semilogx(axMag, freq, 20*log10(abs(Z_fit)), '-', ...
                     'LineWidth', 1.5, 'Color', [1 0.4 0.1], 'DisplayName', 'Fit');
                 semilogx(axPhase, freq, angle(Z_fit)*180/pi, '-', ...
@@ -215,7 +216,7 @@ classdef ImpedanceModel < OECT.Model
 
             freq  = eisData.frequency;
             Z_m   = eisData.Z_real + 1i * eisData.Z_imag;
-            Z_fit = OECT.ImpedanceModel.circuitImpedance(2*pi*freq, fitResults.bestParams, obj.Rload);
+            Z_fit = obj.computeImpedanceVec(2*pi*freq, fitResults.bestParams);
             res   = (Z_m - Z_fit) ./ abs(Z_m) * 100;
 
             semilogx(ax, freq, real(res), '-o', 'MarkerSize', 3, ...
@@ -233,41 +234,8 @@ classdef ImpedanceModel < OECT.Model
         end
 
         % ----------------------------------------------------------------
-        %  MODEL INTERFACE (required by OECT.Model)
+        %  MODEL INTERFACE (required by OECT.Model, generic across circuits)
         % ----------------------------------------------------------------
-        function name = getModelName(obj)
-            name = 'Impedance';
-        end
-
-        function description = getModelDescription(obj)
-            description = ['EIS impedance model for gate-source shorted OECT. ' ...
-                'Circuit: Z = r + {[R2||(1/(Q2*(jw)^n2))] + [A/(jw)^nW] + ' ...
-                '[R1||(1/(Q1*(jw)^n1))] + R3 + r} || [R0+jwL0+r] + Rload. ' ...
-                'R1/R2 arcs and the diffusion branch use Constant Phase ' ...
-                'Elements (CPE) to capture depressed/non-ideal (tilted) arcs.'];
-        end
-
-        function paramNames = getParameterNames(obj)
-            paramNames = {'R0','L0','Q1','n1','R1','Q2','n2','R2','A','nW','r','R3'};
-        end
-
-        function bounds = getParameterBounds(obj)
-            bounds = struct( ...
-                'R0',  [1e-3, 1e6], ...
-                'L0',  [1e-12, 1e-1], ...
-                'Q1',  [1e-12, 1e-1], ...
-                'n1',  [0.3, 1.0], ...
-                'R1',  [1e-3, 1e6], ...
-                'Q2',  [1e-12, 1e-1], ...
-                'n2',  [0.3, 1.0], ...
-                'R2',  [1e-3, 1e6], ...
-                'A',   [1e-6, 1e8], ...
-                'nW',  [0.2, 0.8], ...
-                'r',   [1e-3, 1e5], ...
-                'R3',  [0, 1e6]);
-            bounds = obj.mergeUserBounds(bounds);
-        end
-
         function [Vg, Id, gm] = transferCharacteristics(obj, Vg_range, ~)
             Id  = zeros(size(Vg_range));
             gm  = zeros(size(Vg_range));
@@ -281,7 +249,25 @@ classdef ImpedanceModel < OECT.Model
     end
 
     % ------------------------------------------------------------------ %
-    methods (Access = private)
+    methods (Abstract)
+        % Circuit-specific human-readable info
+        name = getModelName(obj)
+        description = getModelDescription(obj)
+
+        % Circuit-specific parameter set
+        paramNames = getParameterNames(obj)
+        bounds = getParameterBounds(obj)
+    end
+
+    methods (Abstract, Static)
+        % Circuit-specific impedance equation.
+        %  Z = circuitImpedance(w_vec, p, Rload)
+        %  p is ordered per the concrete subclass's getParameterNames().
+        Z = circuitImpedance(w_vec, p, Rload)
+    end
+
+    % ------------------------------------------------------------------ %
+    methods (Access = protected)
         function opts = mergeDefaults(~, opts)
             if ~isfield(opts, 'nStarts'),     opts.nStarts     = 50;    end
             if ~isfield(opts, 'maxIter'),     opts.maxIter     = 500;   end
@@ -314,7 +300,7 @@ classdef ImpedanceModel < OECT.Model
             end
         end
 
-        function fitResults = aggregateFits(obj, allResults, w_vec, Z_meas)
+        function fitResults = aggregateFits(obj, allResults, w_vec, Z_meas, circuitFcn)
             success_mask = cellfun(@(r) r.success, allResults);
             good_idx     = find(success_mask);
 
@@ -350,7 +336,7 @@ classdef ImpedanceModel < OECT.Model
             fitResults.parameters = obj.parameters;
 
             % Fitted impedance
-            Z_fit = OECT.ImpedanceModel.circuitImpedance(w_vec, fitResults.bestParams, obj.Rload);
+            Z_fit = circuitFcn(w_vec, fitResults.bestParams);
             fitResults.Z_fit_real = real(Z_fit);
             fitResults.Z_fit_imag = imag(Z_fit);
 
@@ -361,8 +347,7 @@ classdef ImpedanceModel < OECT.Model
         function p = defaultParams(obj)
             prm = obj.parameters.params;
             fNames = obj.getParameterNames();
-            % [R0 L0 Q1 n1 R1 Q2 n2 R2 A nW r R3]
-            defaults = [1000, 1e-6, 1e-6, 0.9, 500, 1e-7, 0.9, 2000, 1e4, 0.5, 100, 50];
+            defaults = obj.defaultParamValues();
             p = zeros(1, numel(fNames));
             for k = 1:numel(fNames)
                 if isfield(prm, fNames{k})
@@ -374,8 +359,8 @@ classdef ImpedanceModel < OECT.Model
         end
 
         function logParameters(obj, p)
-            names    = obj.getParameterNames();
-            units    = {'Ohm','H','F.s^(n1-1)','-','Ohm','F.s^(n2-1)','-','Ohm','Ohm.s^-nW','-','Ohm','Ohm'};
+            names = obj.getParameterNames();
+            units = obj.paramUnits();
             for k = 1:length(names)
                 obj.logger.info('  %s = %.4e %s', names{k}, p(k), units{k});
             end
@@ -387,32 +372,20 @@ classdef ImpedanceModel < OECT.Model
         end
     end
 
+    methods (Abstract, Access = protected)
+        % Fallback initial-guess values (same order as getParameterNames())
+        % used whenever obj.parameters.params doesn't already define a
+        % parameter.
+        defaults = defaultParamValues(obj)
+
+        % Units for each parameter (same order as getParameterNames()),
+        % used only for logging.
+        units = paramUnits(obj)
+    end
+
     % ------------------------------------------------------------------ %
     methods (Static, Access = private)
-        function Z = circuitImpedance(w_vec, p, Rload)
-            %CIRCUITIMPEDANCE  Vectorised circuit evaluation.
-            %  p = [R0, L0, Q1, n1, R1, Q2, n2, R2, A, nW, r, R3]
-            R0 = p(1); L0 = p(2); Q1 = p(3); n1 = p(4); R1 = p(5);
-            Q2 = p(6); n2 = p(7); R2 = p(8); A  = p(9); nW = p(10);
-            r  = p(11); R3 = p(12);
-
-            w = w_vec(:);
-            jw = 1i * w;
-
-            Z_Q1  = 1 ./ (Q1 .* jw.^n1);           % CPE 1 (replaces ideal C1)
-            Z_Q2  = 1 ./ (Q2 .* jw.^n2);           % CPE 2 (replaces ideal C2)
-            Z_RC1 = (R1 .* Z_Q1) ./ (R1 + Z_Q1);   % R1 || CPE1
-            Z_RC2 = (R2 .* Z_Q2) ./ (R2 + Z_Q2);   % R2 || CPE2
-            Z_W   = A ./ jw.^nW;                    % generalised (non-ideal) Warburg/CPE
-
-            Z_arm1 = Z_RC2 + Z_W + Z_RC1 + R3 + r; % ionic/channel arm
-            Z_arm2 = R0 + 1i * w * L0 + r;          % inductive arm
-
-            Z_par = (Z_arm1 .* Z_arm2) ./ (Z_arm1 + Z_arm2);
-            Z = r + Z_par + Rload;
-        end
-
-        function result = fitSingleStart(x0, lb, ub, w_vec, Z_meas, Rload, opts)
+        function result = fitSingleStart(x0, lb, ub, w_vec, Z_meas, circuitFcn, opts)
             %FITSINGLESTART  One optimisation run from a given starting point.
             result.success = false;
             result.R2      = -Inf;
@@ -420,7 +393,7 @@ classdef ImpedanceModel < OECT.Model
             result.chiSquared = Inf;
             result.params  = x0;
 
-            objective = @(p) OECT.ImpedanceModel.residualVec(p, w_vec, Z_meas, Rload);
+            objective = @(p) OECT.ImpedanceModel.residualVec(p, w_vec, Z_meas, circuitFcn);
 
             try
                 fminOpts = optimoptions('fmincon', ...
@@ -461,7 +434,7 @@ classdef ImpedanceModel < OECT.Model
                         % lsqnonlin unavailable/failed – keep fmincon result
                     end
 
-                    Z_fit = OECT.ImpedanceModel.circuitImpedance(w_vec, p_opt, Rload);
+                    Z_fit = circuitFcn(w_vec, p_opt);
                     res   = Z_meas - Z_fit;
                     ss_res = sum(abs(res).^2);
                     ss_tot = sum(abs(Z_meas - mean(Z_meas)).^2);
@@ -482,9 +455,9 @@ classdef ImpedanceModel < OECT.Model
             end
         end
 
-        function r = residualVec(p, w_vec, Z_meas, Rload)
+        function r = residualVec(p, w_vec, Z_meas, circuitFcn)
             %RESIDUALVEC  Complex relative residual vector for lsqnonlin / sum-of-squares.
-            Z_fit = OECT.ImpedanceModel.circuitImpedance(w_vec, p, Rload);
+            Z_fit = circuitFcn(w_vec, p);
             denom = abs(Z_meas) + eps;
             r = [real(Z_meas - Z_fit) ./ denom; imag(Z_meas - Z_fit) ./ denom];
         end
