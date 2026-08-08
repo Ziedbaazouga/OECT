@@ -12,7 +12,7 @@ classdef (Abstract) ImpedanceModel < OECT.Model
     %                                 [A/(jw)^nW] + [R1||(1/(Q1*(jw)^n1))] +
     %                                 R3 + r} || [R0+jwL0+r] + Rload
     %    OECT.ImpedanceSDModel      - Impedance (Source to Drain)
-    %                                 Z = r + 1/(Q1*(jw)^n1)
+    %                                 Z = Rs + [Cdl||(Rp+(1/(Q*(jw)^n)))]
     %    OECT.ImpedanceSDShortModel - Impedance (SD shortcut)
     %                                 Z = R3+[R1||1/(jwC1)]+[1/(Q0*(jw)^n)]+
     %                                 r+[R2||1/(jwC2)]
