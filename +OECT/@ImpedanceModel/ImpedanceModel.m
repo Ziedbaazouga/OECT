@@ -92,10 +92,22 @@ classdef (Abstract) ImpedanceModel < OECT.Model
                 ub(k) = b(2);
             end
 
-            % Build initial guesses via LHS
-            guesses = obj.latinHypercubeSampling(fitOptions.nStarts, lb, ub);
+            % Data-driven bound refinement (tightens generic multi-decade
+            % bounds using the measured high-/low-frequency asymptotes;
+            % no-op unless overridden by the concrete subclass).
+            [lb, ub] = obj.refineParameterBounds(paramOrder, lb, ub, w_vec, Z_meas);
 
-            allResults = cell(fitOptions.nStarts, 1);
+            % Build initial guesses via LHS, reserving a few slots for
+            % data-driven seed guesses (e.g. from the asymptote estimates
+            % used above) so the multi-start search isn't purely random.
+            seedGuesses = obj.seedInitialGuesses(paramOrder, lb, ub, w_vec, Z_meas);
+            nSeed  = size(seedGuesses, 1);
+            nRand  = max(fitOptions.nStarts - nSeed, 0);
+            guesses = [seedGuesses; obj.latinHypercubeSampling(nRand, lb, ub)];
+            nStartsEff = size(guesses, 1);
+            fitOptions.nStarts = nStartsEff;
+
+            allResults = cell(nStartsEff, 1);
             bestR2     = -Inf;
 
             % Bind the concrete circuit equation (a Static method resolved
@@ -270,7 +282,7 @@ classdef (Abstract) ImpedanceModel < OECT.Model
     % ------------------------------------------------------------------ %
     methods (Access = protected)
         function opts = mergeDefaults(~, opts)
-            if ~isfield(opts, 'nStarts'),     opts.nStarts     = 50;    end
+            if ~isfield(opts, 'nStarts'),     opts.nStarts     = 80;    end
             if ~isfield(opts, 'maxIter'),     opts.maxIter     = 500;   end
             if ~isfield(opts, 'tol'),         opts.tol         = 1e-8;  end
             if ~isfield(opts, 'verbose'),     opts.verbose     = false;  end
@@ -281,6 +293,10 @@ classdef (Abstract) ImpedanceModel < OECT.Model
         function guesses = latinHypercubeSampling(~, n, lb, ub)
             %LATINHYPERCUBESAMPLING  Generate n parameter vectors in [lb, ub] via LHS.
             np = length(lb);
+            if n <= 0
+                guesses = zeros(0, np);
+                return;
+            end
             if exist('lhsdesign', 'file')
                 % Statistics and Machine Learning Toolbox
                 unit = lhsdesign(n, np);
@@ -301,13 +317,45 @@ classdef (Abstract) ImpedanceModel < OECT.Model
             end
         end
 
-        function fitResults = aggregateFits(obj, allResults, w_vec, Z_meas, circuitFcn)
-            success_mask = cellfun(@(r) r.success, allResults);
-            good_idx     = find(success_mask);
+        function [lb, ub] = refineParameterBounds(~, ~, lb, ub, ~, ~)
+            %REFINEPARAMETERBOUNDS  Hook for data-driven bound tightening.
+            %  Default: no-op (returns the generic bounds unchanged).
+            %  Concrete subclasses may override this to shrink the
+            %  generic multi-decade bounds using estimates derived from
+            %  the measured EIS data (e.g. high-/low-frequency real-part
+            %  asymptotes), which makes the multi-start LHS search over
+            %  Q/n-type (CPE) parameters far more effective.
+        end
 
-            fitResults.n_total   = length(allResults);
-            fitResults.n_success = length(good_idx);
-            fitResults.n_failed  = fitResults.n_total - fitResults.n_success;
+        function guesses = seedInitialGuesses(~, ~, lb, ub, ~, ~)
+            %SEEDINITIALGUESSES  Hook returning data-driven initial guesses.
+            %  Default: a single guess at the geometric-mean (log-space
+            %  midpoint) of the (possibly refined) bounds. Concrete
+            %  subclasses may override/extend this to add guesses derived
+            %  directly from the measured data (e.g. asymptote estimates),
+            %  on top of the purely random LHS starts.
+            log_lb = log10(max(lb, 1e-15));
+            log_ub = log10(ub);
+            guesses = 10.^((log_lb + log_ub) / 2);
+        end
+
+        function fitResults = aggregateFits(obj, allResults, w_vec, Z_meas, circuitFcn)
+            success_mask   = cellfun(@(r) r.success, allResults);
+            converged_mask = cellfun(@(r) r.success && isfield(r, 'converged') && r.converged, allResults);
+
+            good_idx = find(converged_mask);
+            if isempty(good_idx) && any(success_mask)
+                obj.logger.warn(['No fit fully converged (all runs hit the ' ...
+                    'iteration/evaluation limit); falling back to the best ' ...
+                    'non-converged result. Consider increasing maxIter or ' ...
+                    'tightening parameter bounds.']);
+                good_idx = find(success_mask);
+            end
+
+            fitResults.n_total     = length(allResults);
+            fitResults.n_success   = sum(success_mask);
+            fitResults.n_converged = sum(converged_mask);
+            fitResults.n_failed    = fitResults.n_total - fitResults.n_success;
             fitResults.all_results = allResults;
 
             if isempty(good_idx)
@@ -388,11 +436,12 @@ classdef (Abstract) ImpedanceModel < OECT.Model
     methods (Static, Access = private)
         function result = fitSingleStart(x0, lb, ub, w_vec, Z_meas, circuitFcn, opts)
             %FITSINGLESTART  One optimisation run from a given starting point.
-            result.success = false;
-            result.R2      = -Inf;
-            result.RMSE    = Inf;
+            result.success   = false;
+            result.converged = false;
+            result.R2        = -Inf;
+            result.RMSE      = Inf;
             result.chiSquared = Inf;
-            result.params  = x0;
+            result.params    = x0;
 
             objective = @(p) OECT.ImpedanceModel.residualVec(p, w_vec, Z_meas, circuitFcn);
 
@@ -410,6 +459,12 @@ classdef (Abstract) ImpedanceModel < OECT.Model
                     @(p) sum(objective(p).^2), ...
                     x0, [], [], [], [], lb, ub, [], fminOpts);
 
+                % exitflag > 0  : fmincon satisfied a convergence tolerance
+                % exitflag == 0 : hit MaxIterations/MaxFunctionEvaluations
+                %                 without actually converging
+                % exitflag < 0  : failed (infeasible/no progress)
+                lsqExitflag = NaN;
+
                 % Polish the fmincon solution with lsqnonlin, which is
                 % specifically designed for nonlinear least-squares problems
                 % (like this complex-impedance residual) and often escapes
@@ -425,7 +480,7 @@ classdef (Abstract) ImpedanceModel < OECT.Model
                             'FunctionTolerance',    opts.tol, ...
                             'StepTolerance',        opts.tol * 1e-3);
 
-                        [p_polished, res_polished] = lsqnonlin( ...
+                        [p_polished, res_polished, ~, lsqExitflag] = lsqnonlin( ...
                             objective, p_opt, lb, ub, lsqOpts);
 
                         if sum(res_polished.^2) < sum(objective(p_opt).^2)
@@ -435,21 +490,39 @@ classdef (Abstract) ImpedanceModel < OECT.Model
                         % lsqnonlin unavailable/failed – keep fmincon result
                     end
 
-                    Z_fit = circuitFcn(w_vec, p_opt);
-                    res   = Z_meas - Z_fit;
-                    ss_res = sum(abs(res).^2);
-                    ss_tot = sum(abs(Z_meas - mean(Z_meas)).^2);
-                    R2    = 1 - ss_res / (ss_tot + eps);
-                    RMSE  = sqrt(mean(abs(res).^2));
-                    chi2  = sum(abs(res ./ abs(Z_meas + eps)).^2);
+                    Z_fit  = circuitFcn(w_vec, p_opt);
+                    res    = Z_meas - Z_fit;
+                    denom  = abs(Z_meas) + eps;
+                    res_w  = res ./ denom;                 % same weighting as objective/residualVec
+
+                    % R2 (and chiSquared) are computed on the *same*
+                    % modulus-weighted residual that is actually minimised,
+                    % so a good fit-objective value is reflected as a
+                    % correspondingly good R2 (previously R2 used the raw,
+                    % unweighted residual while the optimizer minimised the
+                    % weighted one, causing R2 to look poor/negative even
+                    % for visually good fits across decades of |Z|).
+                    ss_res = sum(abs(res_w).^2);
+                    ss_tot = sum(abs((Z_meas - mean(Z_meas)) ./ denom).^2);
+                    R2     = 1 - ss_res / (ss_tot + eps);
+                    RMSE   = sqrt(mean(abs(res).^2));      % kept in Ohms for interpretability
+                    chi2   = ss_res;
+
+                    % Converged only if at least one of the two solvers
+                    % reported a genuine convergence flag (>0), rather than
+                    % simply running out of iterations/evaluations (0) or
+                    % failing (<0).
+                    converged = (exitflag > 0) || (~isnan(lsqExitflag) && lsqExitflag > 0);
 
                     result.success    = true;
+                    result.converged  = converged;
                     result.params     = p_opt;
                     result.R2         = R2;
                     result.RMSE       = RMSE;
                     result.chiSquared = chi2;
                     result.fval       = fval;
                     result.exitflag   = exitflag;
+                    result.lsqExitflag = lsqExitflag;
                 end
             catch ME
                 result.error = ME.message;

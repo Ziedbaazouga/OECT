@@ -74,6 +74,96 @@ classdef ImpedanceSDModel < OECT.ImpedanceModel
         function units = paramUnits(~)
             units = {'Ohm','Ohm','Ohm','F.s^(n-1)','-'};
         end
+
+        function [lb, ub] = refineParameterBounds(~, paramNames, lb, ub, w_vec, Z_meas)
+            %REFINEPARAMETERBOUNDS  Tighten the generic multi-decade bounds
+            %  using the measured high-/low-frequency real-part asymptotes:
+            %    - as w -> inf, the CPE_vol impedance -> 0, so
+            %      Z -> Rs + Rchannel||Rpore  (upper bound for Rs)
+            %    - as w -> 0, the CPE_vol impedance -> inf, so
+            %      Z -> Rs + Rchannel          (gives Rchannel estimate)
+            [Rs_est, Rchannel_est, Q_est] = OECT.ImpedanceSDModel.estimateAsymptotes(w_vec, Z_meas);
+            if isnan(Rs_est), return; end
+
+            [lb, ub] = OECT.ImpedanceSDModel.narrowBound(paramNames, lb, ub, 'Rs',       Rs_est,       0.1, 10);
+            [lb, ub] = OECT.ImpedanceSDModel.narrowBound(paramNames, lb, ub, 'Rchannel', Rchannel_est, 0.1, 10);
+            if ~isnan(Q_est)
+                [lb, ub] = OECT.ImpedanceSDModel.narrowBound(paramNames, lb, ub, 'Q_vol', Q_est, 0.01, 100);
+            end
+        end
+
+        function guesses = seedInitialGuesses(obj, paramNames, lb, ub, w_vec, Z_meas)
+            %SEEDINITIALGUESSES  Add a data-driven guess (from the
+            %  high-/low-frequency asymptotes) on top of the generic
+            %  log-midpoint guess from the base class.
+            baseGuess = seedInitialGuesses@OECT.ImpedanceModel(obj, paramNames, lb, ub, w_vec, Z_meas);
+
+            [Rs_est, Rchannel_est, Q_est] = OECT.ImpedanceSDModel.estimateAsymptotes(w_vec, Z_meas);
+            if isnan(Rs_est)
+                guesses = baseGuess;
+                return;
+            end
+
+            dataGuess = baseGuess;
+            idxRs  = find(strcmp(paramNames, 'Rs'));
+            idxRch = find(strcmp(paramNames, 'Rchannel'));
+            idxQ   = find(strcmp(paramNames, 'Q_vol'));
+            if ~isempty(idxRs),  dataGuess(idxRs)  = min(max(Rs_est,       lb(idxRs)),  ub(idxRs)); end
+            if ~isempty(idxRch), dataGuess(idxRch) = min(max(Rchannel_est, lb(idxRch)), ub(idxRch)); end
+            if ~isempty(idxQ) && ~isnan(Q_est)
+                dataGuess(idxQ) = min(max(Q_est, lb(idxQ)), ub(idxQ));
+            end
+
+            guesses = [baseGuess; dataGuess];
+        end
+    end
+
+    % ------------------------------------------------------------------ %
+    methods (Static, Access = private)
+        function [Rs_est, Rchannel_est, Q_est] = estimateAsymptotes(w_vec, Z_meas)
+            %ESTIMATEASYMPTOTES  Rough Rs/Rchannel/Q_vol estimates from the
+            %  measured data's high-/low-frequency behaviour. Returns NaN
+            %  fields when there isn't enough valid data to estimate from.
+            Rs_est = NaN; Rchannel_est = NaN; Q_est = NaN;
+
+            w_vec = w_vec(:); Z_meas = Z_meas(:);
+            valid = isfinite(w_vec) & w_vec > 0 & isfinite(real(Z_meas)) & isfinite(imag(Z_meas));
+            if nnz(valid) < 2
+                return;
+            end
+            w_vec = w_vec(valid); Z_meas = Z_meas(valid);
+
+            [~, iMax] = max(w_vec);
+            [~, iMin] = min(w_vec);
+
+            Rs_est = max(real(Z_meas(iMax)), 1e-3);
+            Rlf_est = real(Z_meas(iMin));
+            Rchannel_est = max(Rlf_est - Rs_est, 1e-3);
+
+            % Rough CPE magnitude estimate from the highest-frequency
+            % imaginary part, assuming n ~ 1: |Im(Z)| ~ 1/(Q*w)
+            ImZ = imag(Z_meas(iMax));
+            if abs(ImZ) > eps
+                Q_est = 1 / (w_vec(iMax) * abs(ImZ));
+            end
+        end
+
+        function [lb, ub] = narrowBound(paramNames, lb, ub, name, estimate, loFactor, hiFactor)
+            %NARROWBOUND  Shrink the [lb, ub] window for one named
+            %  parameter toward [estimate*loFactor, estimate*hiFactor],
+            %  intersected with the original bounds (never widening them,
+            %  and always keeping lb < ub).
+            idx = find(strcmp(paramNames, name));
+            if isempty(idx) || ~isfinite(estimate) || estimate <= 0
+                return;
+            end
+            newLb = max(lb(idx), estimate * loFactor);
+            newUb = min(ub(idx), estimate * hiFactor);
+            if newLb < newUb
+                lb(idx) = newLb;
+                ub(idx) = newUb;
+            end
+        end
     end
 
     % ------------------------------------------------------------------ %
