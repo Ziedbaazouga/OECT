@@ -133,19 +133,19 @@ classdef Parameters < handle
 
                 case 'Impedance_SD'
                     % EIS circuit parameters – Impedance (Source to Drain)
-                    % Z = Rs + [CPE_film||(Re+Cv)]
-                    obj.params.Rs = 100;    % Ohm – series parasitic resistance
-                    obj.params.Q  = 1e-6;   % F.s^(n-1) – CPE_film coefficient
-                    obj.params.n  = 0.9;    % -   – CPE_film exponent (1 = ideal C)
-                    obj.params.Re = 500;    % Ohm – electrolyte resistance
-                    obj.params.Cv = 1e-6;   % F   – volumetric capacitance
+                    % Z = Rs + [Rchannel||(Rpore+1/(Q_vol*(jw)^n))]
+                    obj.params.Rs       = 100;    % Ohm – series parasitic resistance
+                    obj.params.Rchannel = 500;    % Ohm – channel resistance
+                    obj.params.Rpore    = 500;    % Ohm – pore resistance
+                    obj.params.Q_vol    = 1e-6;   % F.s^(n-1) – CPE_vol coefficient
+                    obj.params.n        = 0.9;    % -   – CPE_vol exponent (1 = ideal C)
 
                     obj.paramBounds = struct( ...
-                        'Rs', [1e-3,  1e5], ...
-                        'Q',  [1e-12, 1e-1], ...
-                        'n',  [0.3,   1.0], ...
-                        'Re', [1e-3,  1e6], ...
-                        'Cv', [1e-12, 1e-1]);
+                        'Rs',       [1e-3,  1e5], ...
+                        'Rchannel', [1e-3,  1e6], ...
+                        'Rpore',    [1e-3,  1e6], ...
+                        'Q_vol',    [1e-12, 1e-1], ...
+                        'n',        [0.3,   1.0]);
 
                 case 'Impedance_SDShort'
                     % EIS circuit parameters – Impedance (SD shortcut)
@@ -274,11 +274,11 @@ classdef Parameters < handle
                     obj.validateParam('Rload', 0, 1e6);
 
                 case 'Impedance_SD'
-                    obj.validateParam('Rs', 1e-3, 1e5);
-                    obj.validateParam('Q',  1e-12, 1e-1);
-                    obj.validateParam('n',  0, 1);
-                    obj.validateParam('Re', 1e-3, 1e6);
-                    obj.validateParam('Cv', 1e-12, 1e-1);
+                    obj.validateParam('Rs',       1e-3, 1e5);
+                    obj.validateParam('Rchannel', 1e-3, 1e6);
+                    obj.validateParam('Rpore',    1e-3, 1e6);
+                    obj.validateParam('Q_vol',    1e-12, 1e-1);
+                    obj.validateParam('n',        0, 1);
 
                 case 'Impedance_SDShort'
                     obj.validateParam('R3', 0, 1e6);
